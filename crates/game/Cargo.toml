@@ -1,0 +1,26 @@
+[package]
+name    = "game"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "game"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gnssyr"
+path = "src/main.rs"
+
+[dependencies]
+gfx          = { workspace = true }
+gfx-wgpu     = { workspace = true }
+glam         = { workspace = true }
+input        = { workspace = true }
+window       = { workspace = true }
+
+[features]
+# Enable real gamepad input (requires libudev-devel / systemd-devel on Linux).
+gilrs = ["input/gilrs"]
+
+[dev-dependencies]
+gfx-software = { workspace = true }

@@ -1,0 +1,11 @@
+[package]
+name    = "input"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gilrs = { workspace = true, optional = true }
+
+[features]
+# Enable real gamepad input via gilrs (requires libudev on Linux).
+gilrs = ["dep:gilrs"]

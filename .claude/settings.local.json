@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:valerioviperino.me)",
+      "Read(//home/bazzite/.cargo/bin/**)",
+      "Read(//usr/bin/**)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo check:*)",
+      "Bash(pkg-config --libs libudev)",
+      "Bash(echo \"exit: $?\")",
+      "Read(//usr/**)",
+      "Bash(ldconfig -p)",
+      "Bash(ls -la /usr/bin/ld* /usr/bin/lld*)"
+    ]
+  }
+}

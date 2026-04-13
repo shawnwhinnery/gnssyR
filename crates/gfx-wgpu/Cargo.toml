@@ -1,0 +1,12 @@
+[package]
+name    = "gfx-wgpu"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gfx              = { workspace = true }
+wgpu             = { workspace = true }
+raw-window-handle = { workspace = true }
+glam             = { workspace = true }
+pollster         = { workspace = true }
+bytemuck         = { workspace = true }

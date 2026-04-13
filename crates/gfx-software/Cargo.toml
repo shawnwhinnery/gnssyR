@@ -1,0 +1,9 @@
+[package]
+name    = "gfx-software"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gfx        = { workspace = true }
+softbuffer = { workspace = true }
+glam       = { workspace = true }

@@ -1,0 +1,43 @@
+[workspace]
+members = [
+    "crates/gfx",
+    "crates/gfx-wgpu",
+    "crates/gfx-software",
+    "crates/input",
+    "crates/window",
+    "crates/game",
+]
+resolver = "2"
+
+[workspace.dependencies]
+# Internal crates
+gfx          = { path = "crates/gfx" }
+gfx-wgpu     = { path = "crates/gfx-wgpu" }
+gfx-software = { path = "crates/gfx-software" }
+input        = { path = "crates/input" }
+window       = { path = "crates/window" }
+
+# Math
+glam = "0.29"
+
+# Windowing
+winit            = "0.30"
+raw-window-handle = "0.6"
+
+# GPU rendering
+wgpu = "22"
+
+# Software rendering
+softbuffer = "0.4"
+
+# Input
+gilrs = "0.11"
+
+# Tessellation (internal to gfx only)
+lyon = "1.0"
+
+# Async executor (used by gfx-wgpu to block on wgpu init)
+pollster = "0.3"
+
+# Safe byte-casting for GPU buffer uploads
+bytemuck = { version = "1", features = ["derive"] }
