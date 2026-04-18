@@ -20,6 +20,7 @@ physics      = { workspace = true }
 window       = { workspace = true }
 
 [features]
+default = ["gilrs"]
 # Enable real gamepad input (requires libudev-devel / systemd-devel on Linux).
 gilrs = ["input/gilrs"]
 

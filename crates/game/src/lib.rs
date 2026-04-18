@@ -4,10 +4,8 @@ pub mod input;
 pub mod mode;
 pub mod pause;
 pub mod player;
-pub mod sandbox;
 pub mod scene;
-pub mod world;
+pub mod scenes;
 
 pub use mode::GameMode;
 pub use pause::PauseState;
-pub use world::World;

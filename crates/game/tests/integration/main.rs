@@ -1,7 +1,7 @@
 /// Headless integration tests.
 ///
 /// Use `SoftwareDriver` + `SimulatedBackend` — no GPU or display required.
-use game::{sandbox::draw_scene, World};
+use game::scenes::{sandbox::SandboxScene, Scene};
 use gfx::driver::GraphicsDriver;
 use gfx_software::SoftwareDriver;
 
@@ -16,9 +16,9 @@ const HEIGHT: u32 = 512;
 
 fn render_scene() -> Vec<u32> {
     let mut driver = SoftwareDriver::headless(WIDTH, HEIGHT);
-    let world = World::new();
+    let scene = SandboxScene::new();
     driver.begin_frame();
-    draw_scene(&mut driver, &world);
+    scene.draw(&mut driver);
     driver.end_frame();
     driver.pixels().to_vec()
 }

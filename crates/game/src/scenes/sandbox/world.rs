@@ -7,13 +7,14 @@ use crate::{
     hud,
     input::InputState,
     player::{draw_players, Player, PLAYER_SPEED},
-    sandbox::GROUND_COLOR,
 };
 use gfx::{
     shape::{circle, line, polygon},
     style::{Fill, LineCap, LineJoin, Stroke, Style},
     tessellate, Color,
 };
+
+pub(super) const GROUND_COLOR: [f32; 4] = [0.13, 0.14, 0.12, 1.0];
 
 // ---------------------------------------------------------------------------
 // Walls
@@ -128,19 +129,19 @@ impl World {
         world
     }
 
-    pub fn tick(&mut self, events: Vec<InputEvent>) {
+    pub fn tick(&mut self, events: &[InputEvent]) {
         let now = std::time::Instant::now();
         let dt = now.duration_since(self.last_tick).as_secs_f32();
         self.last_tick = now;
         self.fps = self.fps * 0.9 + (1.0 / dt.max(1e-6)) * 0.1;
 
-        for event in &events {
+        for event in events {
             if let InputEvent::CursorMoved { x, y } = event {
                 self.cursor_ndc = Vec2::new(*x, *y);
             }
         }
 
-        self.input_state.apply_events(&events, self.cursor_ndc);
+        self.input_state.apply_events(events, self.cursor_ndc);
         let snapshot = self.input_state.snapshot();
         for player in &mut self.players {
             let intent = snapshot.player(player.slot);
@@ -281,7 +282,7 @@ mod tests {
     #[test]
     fn world_tick_advances_player() {
         let mut world = World::new();
-        world.tick(vec![InputEvent::Button {
+        world.tick(&[InputEvent::Button {
             player: PlayerId::P1,
             button: Button::DPadRight,
             pressed: true,
@@ -293,7 +294,7 @@ mod tests {
     #[test]
     fn world_tick_applies_expected_player_speed() {
         let mut world = World::new();
-        world.tick(vec![InputEvent::Button {
+        world.tick(&[InputEvent::Button {
             player: PlayerId::P1,
             button: Button::DPadRight,
             pressed: true,
@@ -305,12 +306,12 @@ mod tests {
     #[test]
     fn releasing_input_stops_player() {
         let mut world = World::new();
-        world.tick(vec![InputEvent::Button {
+        world.tick(&[InputEvent::Button {
             player: PlayerId::P1,
             button: Button::DPadRight,
             pressed: true,
         }]);
-        world.tick(vec![InputEvent::Button {
+        world.tick(&[InputEvent::Button {
             player: PlayerId::P1,
             button: Button::DPadRight,
             pressed: false,
@@ -322,13 +323,13 @@ mod tests {
     #[test]
     fn held_dpad_continues_moving_without_repeat_events() {
         let mut world = World::new();
-        world.tick(vec![InputEvent::Button {
+        world.tick(&[InputEvent::Button {
             player: PlayerId::P1,
             button: Button::DPadRight,
             pressed: true,
         }]);
         let x1 = world.physics.body(world.players[0].body).position.x;
-        world.tick(vec![]);
+        world.tick(&[]);
         let x2 = world.physics.body(world.players[0].body).position.x;
         assert!(x2 > x1);
     }
@@ -336,7 +337,7 @@ mod tests {
     #[test]
     fn cursor_updates_player_facing() {
         let mut world = World::new();
-        world.tick(vec![InputEvent::CursorMoved { x: 0.0, y: 1.0 }]);
+        world.tick(&[InputEvent::CursorMoved { x: 0.0, y: 1.0 }]);
         assert_eq!(world.players[0].facing, Vec2::Y);
     }
 
@@ -350,7 +351,7 @@ mod tests {
         let mut world = World::new();
         // Place the player off-centre at a known world position.
         world.physics.body_mut(world.players[0].body).position = Vec2::new(2.5, 0.0);
-        world.tick(vec![InputEvent::CursorMoved { x: 0.0, y: 1.0 }]);
+        world.tick(&[InputEvent::CursorMoved { x: 0.0, y: 1.0 }]);
         // player NDC = (2.5 / 5.0, 0.0) = (0.5, 0.0)
         // cursor NDC = (0.0, 1.0)
         // expected dir = normalize((0.0, 1.0) - (0.5, 0.0)) = normalize((-0.5, 1.0))
@@ -361,7 +362,7 @@ mod tests {
     #[test]
     fn right_stick_overrides_cursor_facing() {
         let mut world = World::new();
-        world.tick(vec![
+        world.tick(&[
             InputEvent::CursorMoved { x: 0.0, y: 1.0 },
             InputEvent::Axis {
                 player: PlayerId::P1,
