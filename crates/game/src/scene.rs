@@ -1,13 +1,10 @@
 use std::f32::consts::{PI, TAU};
 
 use gfx::{
-    Color, Transform, Vec2,
     path::PathBuilder,
-    shape::{
-        circle, ellipse, line, polygon, polyline, rect, regular_polygon, rounded_rect, star,
-    },
+    shape::{circle, ellipse, line, polygon, polyline, rect, regular_polygon, rounded_rect, star},
     style::{LineCap, Stroke, Style},
-    tessellate,
+    tessellate, Color, Transform, Vec2,
 };
 
 /// Render the full GFX showcase scene onto `driver`.
@@ -37,7 +34,7 @@ pub fn draw_scene(driver: &mut dyn gfx::GraphicsDriver) {
         driver,
         &regular_polygon(Vec2::new(0.0, 0.65), 0.16, 6),
         &Style {
-            fill:   Some(gfx::style::Fill::Solid(Color::hex(0x9B59B6FF))),
+            fill: Some(gfx::style::Fill::Solid(Color::hex(0x9B59B6FF))),
             stroke: Some(Stroke::solid(Color::WHITE, 0.006)),
         },
         glam::Mat3::IDENTITY,
@@ -48,7 +45,7 @@ pub fn draw_scene(driver: &mut dyn gfx::GraphicsDriver) {
         driver,
         &ellipse(Vec2::new(0.62, 0.62), 0.20, 0.11),
         &Style {
-            fill:   Some(gfx::style::Fill::Solid(Color::hex(0x2EC4B6FF))),
+            fill: Some(gfx::style::Fill::Solid(Color::hex(0x2EC4B6FF))),
             stroke: Some(Stroke::solid(Color::hex(0xEEEEEEFF), 0.005)),
         },
         glam::Mat3::IDENTITY,
@@ -63,12 +60,12 @@ pub fn draw_scene(driver: &mut dyn gfx::GraphicsDriver) {
         driver,
         &circle(Vec2::new(-0.62, 0.0), 0.15),
         &Style {
-            fill:   Some(gfx::style::Fill::Solid(Color::hex(0xFF6B6BFF))),
+            fill: Some(gfx::style::Fill::Solid(Color::hex(0xFF6B6BFF))),
             stroke: Some(Stroke {
                 color: Color::hex(0x220000FF),
                 width: 0.007,
-                cap:   LineCap::Round,
-                join:  gfx::style::LineJoin::Round,
+                cap: LineCap::Round,
+                join: gfx::style::LineJoin::Round,
             }),
         },
         glam::Mat3::IDENTITY,
@@ -79,7 +76,7 @@ pub fn draw_scene(driver: &mut dyn gfx::GraphicsDriver) {
         driver,
         &rounded_rect(Vec2::new(-0.18, -0.13), Vec2::new(0.36, 0.26), 0.04),
         &Style {
-            fill:   Some(gfx::style::Fill::Solid(Color::hex(0x5DADE2FF))),
+            fill: Some(gfx::style::Fill::Solid(Color::hex(0x5DADE2FF))),
             stroke: Some(Stroke::solid(Color::WHITE, 0.006)),
         },
         glam::Mat3::IDENTITY,
@@ -144,7 +141,7 @@ pub fn draw_scene(driver: &mut dyn gfx::GraphicsDriver) {
             driver,
             &path,
             &Style {
-                fill:   Some(gfx::style::Fill::Solid(Color::hex(0x3498DBFF))),
+                fill: Some(gfx::style::Fill::Solid(Color::hex(0x3498DBFF))),
                 stroke: Some(Stroke::solid(Color::hex(0xECF0F1FF), 0.005)),
             },
             glam::Mat3::IDENTITY,
@@ -162,8 +159,8 @@ pub fn draw_scene(driver: &mut dyn gfx::GraphicsDriver) {
         &Style::stroked(Stroke {
             color: Color::rgba(1.0, 1.0, 1.0, 0.35),
             width: 0.004,
-            cap:   LineCap::Square,
-            join:  gfx::style::LineJoin::Miter,
+            cap: LineCap::Square,
+            join: gfx::style::LineJoin::Miter,
         }),
         glam::Mat3::IDENTITY,
     );
@@ -172,10 +169,7 @@ pub fn draw_scene(driver: &mut dyn gfx::GraphicsDriver) {
     draw_shape(
         driver,
         &line(Vec2::new(-0.90, 0.0), Vec2::new(0.90, 0.0)),
-        &Style::stroked(Stroke::solid(
-            Color::WHITE.with_alpha(0.12),
-            0.003,
-        )),
+        &Style::stroked(Stroke::solid(Color::WHITE.with_alpha(0.12), 0.003)),
         glam::Mat3::IDENTITY,
     );
 
@@ -183,10 +177,7 @@ pub fn draw_scene(driver: &mut dyn gfx::GraphicsDriver) {
     draw_shape(
         driver,
         &line(Vec2::new(0.0, -0.90), Vec2::new(0.0, 0.90)),
-        &Style::stroked(Stroke::solid(
-            Color::WHITE.with_alpha(0.12),
-            0.003,
-        )),
+        &Style::stroked(Stroke::solid(Color::WHITE.with_alpha(0.12), 0.003)),
         glam::Mat3::IDENTITY,
     );
 
@@ -228,7 +219,12 @@ pub fn draw_scene(driver: &mut dyn gfx::GraphicsDriver) {
             .then(Transform::translate(0.0, -0.33));
         let c = circle(Vec2::new(0.0, 0.33), 0.025);
         let hue = (i as f32 / 8.0 * 360.0) as u32;
-        draw_shape(driver, &c, &Style::filled(hsv_color(hue, 0.8, 1.0)), t.to_mat3());
+        draw_shape(
+            driver,
+            &c,
+            &Style::filled(hsv_color(hue, 0.8, 1.0)),
+            t.to_mat3(),
+        );
     }
 }
 
@@ -238,8 +234,8 @@ pub fn draw_scene(driver: &mut dyn gfx::GraphicsDriver) {
 
 fn draw_shape(
     driver: &mut dyn gfx::GraphicsDriver,
-    path:   &gfx::Path,
-    style:  &gfx::Style,
+    path: &gfx::Path,
+    style: &gfx::Style,
     transform: glam::Mat3,
 ) {
     for mesh in tessellate(path, style) {

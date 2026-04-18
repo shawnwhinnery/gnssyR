@@ -16,6 +16,7 @@ gfx          = { workspace = true }
 gfx-wgpu     = { workspace = true }
 glam         = { workspace = true }
 input        = { workspace = true }
+physics      = { workspace = true }
 window       = { workspace = true }
 
 [features]

@@ -1,5 +1,5 @@
-use glam::Vec2;
 use super::{Path, Segment};
+use glam::Vec2;
 
 /// Fluent builder for constructing a [`Path`].
 #[derive(Debug, Default)]
@@ -33,15 +33,26 @@ impl PathBuilder {
     }
 
     pub fn arc_to(mut self, center: Vec2, radius: f32, start_angle: f32, end_angle: f32) -> Self {
-        self.segments.push(Segment::Arc { center, radius, start_angle, end_angle });
+        self.segments.push(Segment::Arc {
+            center,
+            radius,
+            start_angle,
+            end_angle,
+        });
         self
     }
 
     pub fn close(self) -> Path {
-        Path { segments: self.segments, closed: true }
+        Path {
+            segments: self.segments,
+            closed: true,
+        }
     }
 
     pub fn build(self) -> Path {
-        Path { segments: self.segments, closed: false }
+        Path {
+            segments: self.segments,
+            closed: false,
+        }
     }
 }

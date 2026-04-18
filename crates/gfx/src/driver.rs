@@ -8,13 +8,13 @@ pub type MeshHandle = u32;
 #[derive(Debug, Clone, Copy)]
 pub struct Vertex {
     pub position: [f32; 2],
-    pub color:    [f32; 4],
+    pub color: [f32; 4],
 }
 
 /// CPU-side triangle mesh produced by tessellation.
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
-    pub indices:  Vec<u32>,
+    pub indices: Vec<u32>,
 }
 
 /// Swappable rendering backend.

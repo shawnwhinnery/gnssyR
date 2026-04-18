@@ -13,8 +13,8 @@ use crate::{
 /// Maps up to 4 connected gamepads to [`PlayerId`]s in connection order.
 /// Axis values below the 0.1 dead-zone are clamped to 0.0.
 pub struct GilrsBackend {
-    gilrs:       Gilrs,
-    player_map:  HashMap<gilrs::GamepadId, PlayerId>,
+    gilrs: Gilrs,
+    player_map: HashMap<gilrs::GamepadId, PlayerId>,
     next_player: u8,
 }
 
@@ -23,7 +23,7 @@ impl GilrsBackend {
         let gilrs = Gilrs::new().expect("failed to initialise gilrs");
 
         // Register any gamepads that were already connected at startup.
-        let mut player_map  = HashMap::new();
+        let mut player_map = HashMap::new();
         let mut next_player = 0u8;
         for (id, _pad) in gilrs.gamepads() {
             if next_player < 4 {
@@ -32,12 +32,18 @@ impl GilrsBackend {
             }
         }
 
-        Self { gilrs, player_map, next_player }
+        Self {
+            gilrs,
+            player_map,
+            next_player,
+        }
     }
 }
 
 impl Default for GilrsBackend {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InputBackend for GilrsBackend {
@@ -62,14 +68,22 @@ impl InputBackend for GilrsBackend {
                 EventType::ButtonPressed(btn, _) => {
                     if let Some(&pid) = self.player_map.get(&id) {
                         if let Some(button) = translate_button(btn) {
-                            events.push(InputEvent::Button { player: pid, button, pressed: true });
+                            events.push(InputEvent::Button {
+                                player: pid,
+                                button,
+                                pressed: true,
+                            });
                         }
                     }
                 }
                 EventType::ButtonReleased(btn, _) => {
                     if let Some(&pid) = self.player_map.get(&id) {
                         if let Some(button) = translate_button(btn) {
-                            events.push(InputEvent::Button { player: pid, button, pressed: false });
+                            events.push(InputEvent::Button {
+                                player: pid,
+                                button,
+                                pressed: false,
+                            });
                         }
                     }
                 }
@@ -78,7 +92,11 @@ impl InputBackend for GilrsBackend {
                         if let Some(ax) = translate_axis(axis) {
                             // Apply dead-zone: values inside ±0.1 become 0.
                             let value = if raw.abs() < 0.1 { 0.0 } else { raw };
-                            events.push(InputEvent::Axis { player: pid, axis: ax, value });
+                            events.push(InputEvent::Axis {
+                                player: pid,
+                                axis: ax,
+                                value,
+                            });
                         }
                     }
                 }
@@ -97,35 +115,35 @@ impl InputBackend for GilrsBackend {
 fn translate_button(btn: gilrs::Button) -> Option<Button> {
     use gilrs::Button as G;
     Some(match btn {
-        G::South         => Button::South,
-        G::East          => Button::East,
-        G::West          => Button::West,
-        G::North         => Button::North,
-        G::LeftTrigger   => Button::LeftBumper,
-        G::RightTrigger  => Button::RightBumper,
-        G::LeftTrigger2  => Button::LeftTrigger,
+        G::South => Button::South,
+        G::East => Button::East,
+        G::West => Button::West,
+        G::North => Button::North,
+        G::LeftTrigger => Button::LeftBumper,
+        G::RightTrigger => Button::RightBumper,
+        G::LeftTrigger2 => Button::LeftTrigger,
         G::RightTrigger2 => Button::RightTrigger,
-        G::LeftThumb     => Button::LeftStick,
-        G::RightThumb    => Button::RightStick,
-        G::DPadUp        => Button::DPadUp,
-        G::DPadDown      => Button::DPadDown,
-        G::DPadLeft      => Button::DPadLeft,
-        G::DPadRight     => Button::DPadRight,
-        G::Start         => Button::Start,
-        G::Select        => Button::Select,
-        _                => return None,
+        G::LeftThumb => Button::LeftStick,
+        G::RightThumb => Button::RightStick,
+        G::DPadUp => Button::DPadUp,
+        G::DPadDown => Button::DPadDown,
+        G::DPadLeft => Button::DPadLeft,
+        G::DPadRight => Button::DPadRight,
+        G::Start => Button::Start,
+        G::Select => Button::Select,
+        _ => return None,
     })
 }
 
 fn translate_axis(axis: gilrs::Axis) -> Option<Axis> {
     use gilrs::Axis as G;
     Some(match axis {
-        G::LeftStickX  => Axis::LeftX,
-        G::LeftStickY  => Axis::LeftY,
+        G::LeftStickX => Axis::LeftX,
+        G::LeftStickY => Axis::LeftY,
         G::RightStickX => Axis::RightX,
         G::RightStickY => Axis::RightY,
-        G::LeftZ       => Axis::LeftTrigger,
-        G::RightZ      => Axis::RightTrigger,
-        _              => return None,
+        G::LeftZ => Axis::LeftTrigger,
+        G::RightZ => Axis::RightTrigger,
+        _ => return None,
     })
 }

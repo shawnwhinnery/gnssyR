@@ -8,15 +8,15 @@ use std::f32::consts::PI;
 use lyon::math::point;
 use lyon::path::Path as LyonPath;
 use lyon::tessellation::{
-    BuffersBuilder, FillOptions, FillTessellator, FillVertex, FillVertexConstructor,
-    StrokeOptions, StrokeTessellator, StrokeVertex, StrokeVertexConstructor, VertexBuffers,
+    BuffersBuilder, FillOptions, FillTessellator, FillVertex, FillVertexConstructor, StrokeOptions,
+    StrokeTessellator, StrokeVertex, StrokeVertexConstructor, VertexBuffers,
 };
 
+use super::{Path, Segment};
 use crate::{
     driver::{Mesh, Vertex},
     style::{Fill, LineCap, LineJoin, Stroke, Style},
 };
-use super::{Path, Segment};
 
 // ---------------------------------------------------------------------------
 // Public(crate) entry point
@@ -91,7 +91,12 @@ fn to_lyon_path(path: &Path) -> Option<LyonPath> {
                     point(end.x, end.y),
                 );
             }
-            Segment::Arc { center, radius, start_angle, end_angle } => {
+            Segment::Arc {
+                center,
+                radius,
+                start_angle,
+                end_angle,
+            } => {
                 // Approximate arc with line segments (~11.25° each).
                 let sx = center.x + radius * start_angle.cos();
                 let sy = center.y + radius * start_angle.sin();
@@ -131,7 +136,10 @@ struct FillCtor([f32; 4]);
 impl FillVertexConstructor<Vertex> for FillCtor {
     fn new_vertex(&mut self, v: FillVertex<'_>) -> Vertex {
         let p = v.position();
-        Vertex { position: [p.x, p.y], color: self.0 }
+        Vertex {
+            position: [p.x, p.y],
+            color: self.0,
+        }
     }
 }
 
@@ -139,7 +147,10 @@ struct StrokeCtor([f32; 4]);
 impl StrokeVertexConstructor<Vertex> for StrokeCtor {
     fn new_vertex(&mut self, v: StrokeVertex<'_, '_>) -> Vertex {
         let p = v.position();
-        Vertex { position: [p.x, p.y], color: self.0 }
+        Vertex {
+            position: [p.x, p.y],
+            color: self.0,
+        }
     }
 }
 
@@ -160,7 +171,10 @@ fn tessellate_fill(path: &Path, fill: &Fill) -> Option<Mesh> {
         )
         .ok()?;
 
-    Some(Mesh { vertices: buffers.vertices, indices: buffers.indices })
+    Some(Mesh {
+        vertices: buffers.vertices,
+        indices: buffers.indices,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -172,8 +186,8 @@ fn tessellate_stroke(path: &Path, stroke: &Stroke) -> Option<Mesh> {
     let lyon_path = to_lyon_path(path)?;
 
     let lyon_cap = match stroke.cap {
-        LineCap::Butt   => lyon::tessellation::LineCap::Butt,
-        LineCap::Round  => lyon::tessellation::LineCap::Round,
+        LineCap::Butt => lyon::tessellation::LineCap::Butt,
+        LineCap::Round => lyon::tessellation::LineCap::Round,
         LineCap::Square => lyon::tessellation::LineCap::Square,
     };
     let lyon_join = match stroke.join {
@@ -198,7 +212,10 @@ fn tessellate_stroke(path: &Path, stroke: &Stroke) -> Option<Mesh> {
         )
         .ok()?;
 
-    Some(Mesh { vertices: buffers.vertices, indices: buffers.indices })
+    Some(Mesh {
+        vertices: buffers.vertices,
+        indices: buffers.indices,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -208,8 +225,9 @@ fn tessellate_stroke(path: &Path, stroke: &Stroke) -> Option<Mesh> {
 fn fill_color(fill: &Fill) -> [f32; 4] {
     match fill {
         Fill::Solid(c) => c.to_array(),
-        Fill::LinearGradient { stops, .. } | Fill::RadialGradient { stops, .. } => {
-            stops.first().map(|s| s.color.to_array()).unwrap_or([1.0; 4])
-        }
+        Fill::LinearGradient { stops, .. } | Fill::RadialGradient { stops, .. } => stops
+            .first()
+            .map(|s| s.color.to_array())
+            .unwrap_or([1.0; 4]),
     }
 }

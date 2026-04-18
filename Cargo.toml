@@ -5,6 +5,7 @@ members = [
     "crates/gfx-software",
     "crates/input",
     "crates/window",
+    "crates/physics",
     "crates/game",
 ]
 resolver = "2"
@@ -16,6 +17,9 @@ gfx-wgpu     = { path = "crates/gfx-wgpu" }
 gfx-software = { path = "crates/gfx-software" }
 input        = { path = "crates/input" }
 window       = { path = "crates/window" }
+
+# Internal crates (physics)
+physics      = { path = "crates/physics" }
 
 # Math
 glam = "0.29"

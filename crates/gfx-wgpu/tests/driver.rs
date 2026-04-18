@@ -38,9 +38,18 @@ fn headless_driver() -> WgpuDriver {
 
 fn triangle_verts() -> (Vec<Vertex>, Vec<u32>) {
     let v = vec![
-        Vertex { position: [ 0.0,  0.5], color: [1.0, 1.0, 1.0, 1.0] },
-        Vertex { position: [-0.5, -0.5], color: [1.0, 1.0, 1.0, 1.0] },
-        Vertex { position: [ 0.5, -0.5], color: [1.0, 1.0, 1.0, 1.0] },
+        Vertex {
+            position: [0.0, 0.5],
+            color: [1.0, 1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [-0.5, -0.5],
+            color: [1.0, 1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [0.5, -0.5],
+            color: [1.0, 1.0, 1.0, 1.0],
+        },
     ];
     (v, vec![0, 1, 2])
 }
@@ -123,7 +132,11 @@ fn handles_recycled_after_begin_frame() {
     d.present();
 
     d.begin_frame();
-    assert_eq!(d.upload_mesh(&v, &i), 0, "handle should reset after begin_frame");
+    assert_eq!(
+        d.upload_mesh(&v, &i),
+        0,
+        "handle should reset after begin_frame"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +176,11 @@ fn draw_mesh_with_translation_no_panic() {
     let (v, i) = triangle_verts();
     d.begin_frame();
     let h = d.upload_mesh(&v, &i);
-    d.draw_mesh(h, Mat3::from_translation(Vec2::new(0.5, 0.0)), [1.0, 1.0, 1.0, 1.0]);
+    d.draw_mesh(
+        h,
+        Mat3::from_translation(Vec2::new(0.5, 0.0)),
+        [1.0, 1.0, 1.0, 1.0],
+    );
     d.end_frame();
     d.present();
 }

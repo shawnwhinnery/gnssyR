@@ -12,7 +12,11 @@
       "Bash(echo \"exit: $?\")",
       "Read(//usr/**)",
       "Bash(ldconfig -p)",
-      "Bash(ls -la /usr/bin/ld* /usr/bin/lld*)"
+      "Bash(ls -la /usr/bin/ld* /usr/bin/lld*)",
+      "Bash(xargs ls:*)",
+      "Bash(git -C /Users/shawnwhinnery/Projects/gnssyR log --oneline crates/game/tests/snapshots/gfx_scene.bin)",
+      "Bash(git stash:*)",
+      "Bash(UPDATE_SNAPSHOTS=1 cargo test -p game --test integration)"
     ]
   }
 }

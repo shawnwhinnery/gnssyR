@@ -7,4 +7,5 @@
 | `gfx-software` | CPU-based `GraphicsDriver` with no GPU or display requirement. Used for headless testing and CI. Exposes a pixel buffer for assertion. |
 | `input` | Unified input abstraction for up to 4 local players. Normalises gamepads and keyboard/mouse into a single `InputEvent` stream. Includes `SimulatedBackend` for tests. |
 | `window` | `App::run` entry point. Owns the winit event loop, drives the per-frame tick/render sequence, and coordinates the input backend and graphics driver. |
+| `physics` | 2D rigid-body physics. Impulse-based resolution with SAT narrowphase. Supports Circle, Convex polygon, and triangle Mesh colliders; simple shapes can interact with complex geometry. |
 | `game` | Core game loop and mechanics. Placeholder — to be defined once infrastructure is in place. Targets couch co-op for up to 4 local players with a 2D vector graphics aesthetic. |

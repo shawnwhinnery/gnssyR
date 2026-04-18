@@ -13,6 +13,7 @@ See [crates/index.md](crates/index.md) for a one-line summary of every crate.
 | Graphics abstraction | `gfx` |
 | Graphics backends | `gfx-wgpu` (GPU/production), `gfx-software` (CPU/headless) |
 | Input | `input` |
+| Physics | `physics` (pure-math 2D rigid-body simulation, SAT narrowphase, impulse-based resolution) |
 | App loop | `window` |
 | Game logic | `game` (placeholder) |
 

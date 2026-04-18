@@ -1,8 +1,7 @@
 /// Headless integration tests.
 ///
 /// Use `SoftwareDriver` + `SimulatedBackend` — no GPU or display required.
-
-use game::scene::draw_scene;
+use game::{sandbox::draw_scene, World};
 use gfx::driver::GraphicsDriver;
 use gfx_software::SoftwareDriver;
 
@@ -12,13 +11,14 @@ use gfx_software::SoftwareDriver;
 
 /// Resolution used for all snapshot renders.  Small enough to be fast, large
 /// enough to catch meaningful regressions.
-const WIDTH:  u32 = 512;
+const WIDTH: u32 = 512;
 const HEIGHT: u32 = 512;
 
 fn render_scene() -> Vec<u32> {
     let mut driver = SoftwareDriver::headless(WIDTH, HEIGHT);
+    let world = World::new();
     driver.begin_frame();
-    draw_scene(&mut driver);
+    draw_scene(&mut driver, &world);
     driver.end_frame();
     driver.pixels().to_vec()
 }
@@ -43,8 +43,8 @@ fn pixels_to_bytes(pixels: &[u32]) -> Vec<u8> {
 #[test]
 fn gfx_scene_snapshot() {
     let pixels = render_scene();
-    let bytes  = pixels_to_bytes(&pixels);
-    let path   = snapshot_path();
+    let bytes = pixels_to_bytes(&pixels);
+    let path = snapshot_path();
 
     let update = std::env::var("UPDATE_SNAPSHOTS").is_ok();
 

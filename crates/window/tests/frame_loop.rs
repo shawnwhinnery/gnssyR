@@ -15,16 +15,30 @@ struct SpyDriver {
 }
 
 impl GraphicsDriver for SpyDriver {
-    fn begin_frame(&mut self) { self.log.push("begin_frame"); }
-    fn end_frame(&mut self)   { self.log.push("end_frame");   }
-    fn present(&mut self)     { self.log.push("present");     }
+    fn begin_frame(&mut self) {
+        self.log.push("begin_frame");
+    }
+    fn end_frame(&mut self) {
+        self.log.push("end_frame");
+    }
+    fn present(&mut self) {
+        self.log.push("present");
+    }
 
     fn clear(&mut self, _color: [f32; 4]) {}
 
-    fn upload_mesh(&mut self, _v: &[Vertex], _i: &[u32]) -> MeshHandle { 0 }
+    fn upload_mesh(&mut self, _v: &[Vertex], _i: &[u32]) -> MeshHandle {
+        0
+    }
     fn draw_mesh(&mut self, _m: MeshHandle, _t: Mat3, _c: [f32; 4]) {}
 
-    fn surface_size(&self) -> (u32, u32) { (800, 600) }
+    fn resize(&mut self, _w: u32, _h: u32) {}
+    fn backend_name(&self) -> &'static str {
+        "spy"
+    }
+    fn surface_size(&self) -> (u32, u32) {
+        (800, 600)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -49,7 +63,9 @@ fn frame_sequence_begin_render_end_present() {
         SimulatedBackend::new(),
         SpyDriver::default(),
         |_state, _events| {},
-        |_state, _driver| { render_called = true; },
+        |_state, _driver| {
+            render_called = true;
+        },
         1,
     );
 
@@ -70,13 +86,27 @@ fn driver_call_order_single_frame() {
     struct LoggingDriver(Rc<RefCell<Vec<&'static str>>>);
 
     impl GraphicsDriver for LoggingDriver {
-        fn begin_frame(&mut self) { self.0.borrow_mut().push("begin_frame"); }
-        fn end_frame(&mut self)   { self.0.borrow_mut().push("end_frame");   }
-        fn present(&mut self)     { self.0.borrow_mut().push("present");     }
+        fn begin_frame(&mut self) {
+            self.0.borrow_mut().push("begin_frame");
+        }
+        fn end_frame(&mut self) {
+            self.0.borrow_mut().push("end_frame");
+        }
+        fn present(&mut self) {
+            self.0.borrow_mut().push("present");
+        }
         fn clear(&mut self, _: [f32; 4]) {}
-        fn upload_mesh(&mut self, _: &[Vertex], _: &[u32]) -> MeshHandle { 0 }
+        fn upload_mesh(&mut self, _: &[Vertex], _: &[u32]) -> MeshHandle {
+            0
+        }
         fn draw_mesh(&mut self, _: MeshHandle, _: Mat3, _: [f32; 4]) {}
-        fn surface_size(&self) -> (u32, u32) { (800, 600) }
+        fn resize(&mut self, _: u32, _: u32) {}
+        fn backend_name(&self) -> &'static str {
+            "spy"
+        }
+        fn surface_size(&self) -> (u32, u32) {
+            (800, 600)
+        }
     }
 
     let render_order = log.clone();
@@ -103,7 +133,11 @@ fn driver_call_order_single_frame() {
 fn input_events_delivered_to_tick() {
     let mut backend = SimulatedBackend::new();
     let p = PlayerId(0);
-    backend.push(InputEvent::Button { player: p, button: Button::South, pressed: true });
+    backend.push(InputEvent::Button {
+        player: p,
+        button: Button::South,
+        pressed: true,
+    });
     backend.push(InputEvent::MouseMove { dx: 1.0, dy: 2.0 });
 
     let mut received: Vec<InputEvent> = Vec::new();
@@ -118,7 +152,14 @@ fn input_events_delivered_to_tick() {
     );
 
     assert_eq!(received.len(), 2);
-    assert!(matches!(&received[0], InputEvent::Button { button: Button::South, pressed: true, .. }));
+    assert!(matches!(
+        &received[0],
+        InputEvent::Button {
+            button: Button::South,
+            pressed: true,
+            ..
+        }
+    ));
     assert!(matches!(&received[1], InputEvent::MouseMove { dx, dy } if *dx == 1.0 && *dy == 2.0));
 }
 
@@ -175,13 +216,27 @@ fn multiple_frames_call_counts() {
 
     struct LoggingDriver(Rc<RefCell<Vec<&'static str>>>);
     impl GraphicsDriver for LoggingDriver {
-        fn begin_frame(&mut self) { self.0.borrow_mut().push("begin_frame"); }
-        fn end_frame(&mut self)   { self.0.borrow_mut().push("end_frame");   }
-        fn present(&mut self)     { self.0.borrow_mut().push("present");     }
+        fn begin_frame(&mut self) {
+            self.0.borrow_mut().push("begin_frame");
+        }
+        fn end_frame(&mut self) {
+            self.0.borrow_mut().push("end_frame");
+        }
+        fn present(&mut self) {
+            self.0.borrow_mut().push("present");
+        }
         fn clear(&mut self, _: [f32; 4]) {}
-        fn upload_mesh(&mut self, _: &[Vertex], _: &[u32]) -> MeshHandle { 0 }
+        fn upload_mesh(&mut self, _: &[Vertex], _: &[u32]) -> MeshHandle {
+            0
+        }
         fn draw_mesh(&mut self, _: MeshHandle, _: Mat3, _: [f32; 4]) {}
-        fn surface_size(&self) -> (u32, u32) { (800, 600) }
+        fn resize(&mut self, _: u32, _: u32) {}
+        fn backend_name(&self) -> &'static str {
+            "spy"
+        }
+        fn surface_size(&self) -> (u32, u32) {
+            (800, 600)
+        }
     }
 
     App::run_frames(
@@ -194,11 +249,11 @@ fn multiple_frames_call_counts() {
     );
 
     let log = log.borrow();
-    let begins  = log.iter().filter(|&&s| s == "begin_frame").count();
-    let ends    = log.iter().filter(|&&s| s == "end_frame").count();
+    let begins = log.iter().filter(|&&s| s == "begin_frame").count();
+    let ends = log.iter().filter(|&&s| s == "end_frame").count();
     let presents = log.iter().filter(|&&s| s == "present").count();
-    assert_eq!(begins,   3, "begin_frame count");
-    assert_eq!(ends,     3, "end_frame count");
+    assert_eq!(begins, 3, "begin_frame count");
+    assert_eq!(ends, 3, "end_frame count");
     assert_eq!(presents, 3, "present count");
 }
 
@@ -210,7 +265,11 @@ fn multiple_frames_call_counts() {
 fn events_cleared_between_frames() {
     let mut backend = SimulatedBackend::new();
     let p = PlayerId(0);
-    backend.push(InputEvent::Button { player: p, button: Button::Start, pressed: true });
+    backend.push(InputEvent::Button {
+        player: p,
+        button: Button::Start,
+        pressed: true,
+    });
 
     let mut counts: Vec<usize> = Vec::new();
 
@@ -267,13 +326,89 @@ fn factory_is_called_to_create_driver() {
     App::run_frames_with_factory(
         (),
         SimulatedBackend::new(),
-        move || { called2.set(true); SpyDriver::default() },
+        move || {
+            called2.set(true);
+            SpyDriver::default()
+        },
         |_, _| {},
         |_, _| {},
         1,
     );
 
     assert!(called.get(), "make_driver factory was never called");
+}
+
+// ---------------------------------------------------------------------------
+// W-M1. cursor_moved_delivered_to_tick
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cursor_moved_delivered_to_tick() {
+    let mut backend = SimulatedBackend::new();
+    backend.push(InputEvent::CursorMoved { x: 0.4, y: -0.6 });
+
+    let mut received: Vec<InputEvent> = Vec::new();
+
+    App::run_frames(
+        (),
+        backend,
+        SpyDriver::default(),
+        |_state, events| received.extend(events),
+        |_, _| {},
+        1,
+    );
+
+    assert_eq!(received.len(), 1);
+    assert!(matches!(&received[0], InputEvent::CursorMoved { x, y } if *x == 0.4 && *y == -0.6));
+}
+
+// ---------------------------------------------------------------------------
+// W-M2. two_cursor_moved_both_reach_tick
+// ---------------------------------------------------------------------------
+
+#[test]
+fn two_cursor_moved_both_reach_tick() {
+    let mut backend = SimulatedBackend::new();
+    backend.push(InputEvent::CursorMoved { x: -0.5, y: 0.5 });
+    backend.push(InputEvent::CursorMoved { x: 0.5, y: -0.5 });
+
+    let mut received: Vec<InputEvent> = Vec::new();
+
+    App::run_frames(
+        (),
+        backend,
+        SpyDriver::default(),
+        |_state, events| received.extend(events),
+        |_, _| {},
+        1,
+    );
+
+    assert_eq!(received.len(), 2);
+    assert!(matches!(&received[0], InputEvent::CursorMoved { x, y } if *x == -0.5 && *y ==  0.5));
+    assert!(matches!(&received[1], InputEvent::CursorMoved { x, y } if *x ==  0.5 && *y == -0.5));
+}
+
+// ---------------------------------------------------------------------------
+// W-M3. cursor_moved_cleared_between_frames
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cursor_moved_cleared_between_frames() {
+    let mut backend = SimulatedBackend::new();
+    backend.push(InputEvent::CursorMoved { x: 0.1, y: 0.2 });
+
+    let mut counts: Vec<usize> = Vec::new();
+
+    App::run_frames(
+        (),
+        backend,
+        SpyDriver::default(),
+        |_state, events| counts.push(events.len()),
+        |_, _| {},
+        2,
+    );
+
+    assert_eq!(counts, vec![1, 0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -292,13 +427,27 @@ fn factory_driver_is_used_for_frames() {
 
     struct LoggingDriver(Rc<RefCell<Vec<&'static str>>>);
     impl GraphicsDriver for LoggingDriver {
-        fn begin_frame(&mut self) { self.0.borrow_mut().push("begin_frame"); }
-        fn end_frame(&mut self)   { self.0.borrow_mut().push("end_frame");   }
-        fn present(&mut self)     { self.0.borrow_mut().push("present");     }
+        fn begin_frame(&mut self) {
+            self.0.borrow_mut().push("begin_frame");
+        }
+        fn end_frame(&mut self) {
+            self.0.borrow_mut().push("end_frame");
+        }
+        fn present(&mut self) {
+            self.0.borrow_mut().push("present");
+        }
         fn clear(&mut self, _: [f32; 4]) {}
-        fn upload_mesh(&mut self, _: &[Vertex], _: &[u32]) -> MeshHandle { 0 }
+        fn upload_mesh(&mut self, _: &[Vertex], _: &[u32]) -> MeshHandle {
+            0
+        }
         fn draw_mesh(&mut self, _: MeshHandle, _: Mat3, _: [f32; 4]) {}
-        fn surface_size(&self) -> (u32, u32) { (800, 600) }
+        fn resize(&mut self, _: u32, _: u32) {}
+        fn backend_name(&self) -> &'static str {
+            "spy"
+        }
+        fn surface_size(&self) -> (u32, u32) {
+            (800, 600)
+        }
     }
 
     let log2 = log.clone();
@@ -314,8 +463,14 @@ fn factory_driver_is_used_for_frames() {
     let log = log.borrow();
     assert_eq!(
         *log,
-        vec!["begin_frame", "end_frame", "present",
-             "begin_frame", "end_frame", "present"],
+        vec![
+            "begin_frame",
+            "end_frame",
+            "present",
+            "begin_frame",
+            "end_frame",
+            "present"
+        ],
         "factory-created driver was not used for all frames",
     );
 }

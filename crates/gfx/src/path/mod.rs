@@ -10,16 +10,28 @@ use glam::Vec2;
 #[derive(Debug, Clone)]
 pub struct Path {
     pub(crate) segments: Vec<Segment>,
-    pub(crate) closed:   bool,
+    pub(crate) closed: bool,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum Segment {
     Move(Vec2),
     Line(Vec2),
-    Quad { cp: Vec2, end: Vec2 },
-    Cubic { cp1: Vec2, cp2: Vec2, end: Vec2 },
-    Arc { center: Vec2, radius: f32, start_angle: f32, end_angle: f32 },
+    Quad {
+        cp: Vec2,
+        end: Vec2,
+    },
+    Cubic {
+        cp1: Vec2,
+        cp2: Vec2,
+        end: Vec2,
+    },
+    Arc {
+        center: Vec2,
+        radius: f32,
+        start_angle: f32,
+        end_angle: f32,
+    },
 }
 
 impl Path {

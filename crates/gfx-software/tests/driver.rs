@@ -16,9 +16,9 @@ fn pack(r: f32, g: f32, b: f32, a: f32) -> u32 {
     (a << 24) | (r << 16) | (g << 8) | b
 }
 
-const RED:   u32 = 0xFF_FF_00_00;
+const RED: u32 = 0xFF_FF_00_00;
 const GREEN: u32 = 0xFF_00_FF_00;
-const BLUE:  u32 = 0xFF_00_00_FF;
+const BLUE: u32 = 0xFF_00_00_FF;
 const WHITE: u32 = 0xFF_FF_FF_FF;
 const BLACK: u32 = 0xFF_00_00_00;
 
@@ -34,9 +34,18 @@ fn clip_to_pixel(cx: f32, cy: f32, w: u32, h: u32) -> usize {
 /// A simple 3-vertex triangle mesh — white fill, centred in clip space.
 fn triangle_mesh() -> (Vec<Vertex>, Vec<u32>) {
     let verts = vec![
-        Vertex { position: [ 0.0,  0.5], color: [1.0, 1.0, 1.0, 1.0] },
-        Vertex { position: [-0.5, -0.5], color: [1.0, 1.0, 1.0, 1.0] },
-        Vertex { position: [ 0.5, -0.5], color: [1.0, 1.0, 1.0, 1.0] },
+        Vertex {
+            position: [0.0, 0.5],
+            color: [1.0, 1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [-0.5, -0.5],
+            color: [1.0, 1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [0.5, -0.5],
+            color: [1.0, 1.0, 1.0, 1.0],
+        },
     ];
     (verts, vec![0, 1, 2])
 }
@@ -106,7 +115,10 @@ fn multiple_frames_no_panic() {
 fn clear_fills_all_pixels_red() {
     let mut d = SoftwareDriver::headless(16, 16);
     run_frame(&mut d, |d| d.clear([1.0, 0.0, 0.0, 1.0]));
-    assert!(d.pixels().iter().all(|&p| p == RED), "not all pixels are red");
+    assert!(
+        d.pixels().iter().all(|&p| p == RED),
+        "not all pixels are red"
+    );
 }
 
 #[test]
@@ -187,7 +199,11 @@ fn handles_recycled_after_begin_frame() {
     d.present();
 
     d.begin_frame(); // pool clears
-    assert_eq!(d.upload_mesh(&v, &i), 0, "handle should reset to 0 after begin_frame");
+    assert_eq!(
+        d.upload_mesh(&v, &i),
+        0,
+        "handle should reset to 0 after begin_frame"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -203,9 +219,18 @@ fn draw_triangle_centroid_pixel() {
     run_frame(&mut d, |d| {
         d.clear([0.0, 0.0, 0.0, 1.0]);
         let verts = vec![
-            Vertex { position: [ 0.0,  0.6], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [-0.6, -0.6], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [ 0.6, -0.6], color: [1.0, 1.0, 1.0, 1.0] },
+            Vertex {
+                position: [0.0, 0.6],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [-0.6, -0.6],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [0.6, -0.6],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
         ];
         let h_mesh = d.upload_mesh(&verts, &[0, 1, 2]);
         d.draw_mesh(h_mesh, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
@@ -217,7 +242,11 @@ fn draw_triangle_centroid_pixel() {
 
     // Corner far from triangle should remain black
     let outside_idx = clip_to_pixel(-0.9, 0.9, w, h);
-    assert_eq!(d.pixels()[outside_idx], BLACK, "outside pixel should be black");
+    assert_eq!(
+        d.pixels()[outside_idx],
+        BLACK,
+        "outside pixel should be black"
+    );
 }
 
 #[test]
@@ -228,9 +257,18 @@ fn draw_triangle_vertex_colours_interpolated() {
     run_frame(&mut d, |d| {
         d.clear([0.0, 0.0, 0.0, 1.0]);
         let verts = vec![
-            Vertex { position: [ 0.0,  0.8], color: [1.0, 0.0, 0.0, 1.0] }, // top — red
-            Vertex { position: [-0.8, -0.8], color: [0.0, 1.0, 0.0, 1.0] }, // bottom-left — green
-            Vertex { position: [ 0.8, -0.8], color: [0.0, 0.0, 1.0, 1.0] }, // bottom-right — blue
+            Vertex {
+                position: [0.0, 0.8],
+                color: [1.0, 0.0, 0.0, 1.0],
+            }, // top — red
+            Vertex {
+                position: [-0.8, -0.8],
+                color: [0.0, 1.0, 0.0, 1.0],
+            }, // bottom-left — green
+            Vertex {
+                position: [0.8, -0.8],
+                color: [0.0, 0.0, 1.0, 1.0],
+            }, // bottom-right — blue
         ];
         let h_mesh = d.upload_mesh(&verts, &[0, 1, 2]);
         d.draw_mesh(h_mesh, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
@@ -244,8 +282,8 @@ fn draw_triangle_vertex_colours_interpolated() {
     let top_idx = clip_to_pixel(0.0, 0.75, w, h);
     let top = d.pixels()[top_idx];
     assert!(channel(top, 16) >= 0.7, "top pixel should be mostly red");
-    assert!(channel(top,  8) <= 0.3, "top pixel should have little green");
-    assert!(channel(top,  0) <= 0.3, "top pixel should have little blue");
+    assert!(channel(top, 8) <= 0.3, "top pixel should have little green");
+    assert!(channel(top, 0) <= 0.3, "top pixel should have little blue");
 }
 
 #[test]
@@ -257,18 +295,35 @@ fn draw_fills_triangle_interior_not_exterior() {
         d.clear([0.0, 0.0, 0.0, 1.0]);
         // Upper-right quadrant triangle
         let verts = vec![
-            Vertex { position: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [1.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [0.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+            Vertex {
+                position: [0.0, 0.0],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [1.0, 0.0],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [0.0, 1.0],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
         ];
         let h_mesh = d.upload_mesh(&verts, &[0, 1, 2]);
         d.draw_mesh(h_mesh, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
     });
 
-    let inside_idx  = clip_to_pixel(0.3, 0.3, w, h);
+    let inside_idx = clip_to_pixel(0.3, 0.3, w, h);
     let outside_idx = clip_to_pixel(-0.5, -0.5, w, h);
-    assert_eq!(d.pixels()[inside_idx],  WHITE, "inside triangle should be white");
-    assert_eq!(d.pixels()[outside_idx], BLACK, "outside triangle should be black");
+    assert_eq!(
+        d.pixels()[inside_idx],
+        WHITE,
+        "inside triangle should be white"
+    );
+    assert_eq!(
+        d.pixels()[outside_idx],
+        BLACK,
+        "outside triangle should be black"
+    );
 }
 
 #[test]
@@ -279,9 +334,18 @@ fn draw_triangle_with_translation() {
     run_frame(&mut d, |d| {
         d.clear([0.0, 0.0, 0.0, 1.0]);
         let verts = vec![
-            Vertex { position: [ 0.0,  0.25], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [-0.25, -0.25], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [ 0.25, -0.25], color: [1.0, 1.0, 1.0, 1.0] },
+            Vertex {
+                position: [0.0, 0.25],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [-0.25, -0.25],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [0.25, -0.25],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
         ];
         let h_mesh = d.upload_mesh(&verts, &[0, 1, 2]);
 
@@ -296,14 +360,26 @@ fn draw_triangle_with_translation() {
         );
     });
 
-    let centroid1 = clip_to_pixel(0.0,  0.0, w, h);
+    let centroid1 = clip_to_pixel(0.0, 0.0, w, h);
     let centroid2 = clip_to_pixel(0.5, 0.0, w, h);
-    assert_eq!(d.pixels()[centroid1], WHITE, "first instance centroid should be white");
-    assert_eq!(d.pixels()[centroid2], WHITE, "second instance centroid should be white");
+    assert_eq!(
+        d.pixels()[centroid1],
+        WHITE,
+        "first instance centroid should be white"
+    );
+    assert_eq!(
+        d.pixels()[centroid2],
+        WHITE,
+        "second instance centroid should be white"
+    );
 
     // The gap between them (x ≈ 0.25, well between the two centroids) is black
     let gap = clip_to_pixel(0.25, 0.6, w, h); // above both triangles
-    assert_eq!(d.pixels()[gap], BLACK, "gap above triangles should be black");
+    assert_eq!(
+        d.pixels()[gap],
+        BLACK,
+        "gap above triangles should be black"
+    );
 }
 
 #[test]
@@ -315,9 +391,18 @@ fn draw_triangle_with_tint() {
         d.clear([0.0, 0.0, 0.0, 1.0]);
         // White triangle
         let verts = vec![
-            Vertex { position: [ 0.0,  0.5], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [-0.5, -0.5], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [ 0.5, -0.5], color: [1.0, 1.0, 1.0, 1.0] },
+            Vertex {
+                position: [0.0, 0.5],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [-0.5, -0.5],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [0.5, -0.5],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
         ];
         let h_mesh = d.upload_mesh(&verts, &[0, 1, 2]);
         // Red tint
@@ -336,18 +421,35 @@ fn clear_and_draw_background_preserved() {
     run_frame(&mut d, |d| {
         d.clear([0.0, 1.0, 0.0, 1.0]); // green background
         let verts = vec![
-            Vertex { position: [ 0.0,  0.2], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [-0.2, -0.2], color: [1.0, 1.0, 1.0, 1.0] },
-            Vertex { position: [ 0.2, -0.2], color: [1.0, 1.0, 1.0, 1.0] },
+            Vertex {
+                position: [0.0, 0.2],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [-0.2, -0.2],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [0.2, -0.2],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
         ];
         let h_mesh = d.upload_mesh(&verts, &[0, 1, 2]);
         d.draw_mesh(h_mesh, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
     });
 
-    let inside_idx  = clip_to_pixel(0.0, 0.0, w, h);
+    let inside_idx = clip_to_pixel(0.0, 0.0, w, h);
     let outside_idx = clip_to_pixel(-0.9, 0.9, w, h);
-    assert_eq!(d.pixels()[inside_idx],  WHITE, "triangle centroid should be white");
-    assert_eq!(d.pixels()[outside_idx], GREEN, "background should remain green");
+    assert_eq!(
+        d.pixels()[inside_idx],
+        WHITE,
+        "triangle centroid should be white"
+    );
+    assert_eq!(
+        d.pixels()[outside_idx],
+        GREEN,
+        "background should remain green"
+    );
 }
 
 #[test]
@@ -360,25 +462,43 @@ fn draw_multiple_meshes_in_one_frame() {
 
         // Triangle A — upper left
         let va = vec![
-            Vertex { position: [-0.8,  0.8], color: [1.0, 0.0, 0.0, 1.0] },
-            Vertex { position: [-0.4,  0.8], color: [1.0, 0.0, 0.0, 1.0] },
-            Vertex { position: [-0.6,  0.4], color: [1.0, 0.0, 0.0, 1.0] },
+            Vertex {
+                position: [-0.8, 0.8],
+                color: [1.0, 0.0, 0.0, 1.0],
+            },
+            Vertex {
+                position: [-0.4, 0.8],
+                color: [1.0, 0.0, 0.0, 1.0],
+            },
+            Vertex {
+                position: [-0.6, 0.4],
+                color: [1.0, 0.0, 0.0, 1.0],
+            },
         ];
         let ha = d.upload_mesh(&va, &[0, 1, 2]);
         d.draw_mesh(ha, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
 
         // Triangle B — lower right
         let vb = vec![
-            Vertex { position: [ 0.4, -0.4], color: [0.0, 0.0, 1.0, 1.0] },
-            Vertex { position: [ 0.8, -0.4], color: [0.0, 0.0, 1.0, 1.0] },
-            Vertex { position: [ 0.6, -0.8], color: [0.0, 0.0, 1.0, 1.0] },
+            Vertex {
+                position: [0.4, -0.4],
+                color: [0.0, 0.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [0.8, -0.4],
+                color: [0.0, 0.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [0.6, -0.8],
+                color: [0.0, 0.0, 1.0, 1.0],
+            },
         ];
         let hb = d.upload_mesh(&vb, &[0, 1, 2]);
         d.draw_mesh(hb, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
     });
 
     let ca = clip_to_pixel(-0.6, 0.67, w, h);
-    let cb = clip_to_pixel( 0.6, -0.53, w, h);
-    assert_eq!(d.pixels()[ca], RED,  "triangle A centroid should be red");
+    let cb = clip_to_pixel(0.6, -0.53, w, h);
+    assert_eq!(d.pixels()[ca], RED, "triangle A centroid should be red");
     assert_eq!(d.pixels()[cb], BLUE, "triangle B centroid should be blue");
 }

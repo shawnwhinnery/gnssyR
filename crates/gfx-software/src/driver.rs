@@ -7,13 +7,13 @@ use glam::Mat3;
 
 struct StoredMesh {
     vertices: Vec<Vertex>,
-    indices:  Vec<u32>,
+    indices: Vec<u32>,
 }
 
 struct DrawCall {
-    handle:    MeshHandle,
+    handle: MeshHandle,
     transform: Mat3,
-    tint:      [f32; 4],
+    tint: [f32; 4],
 }
 
 // ---------------------------------------------------------------------------
@@ -25,12 +25,12 @@ struct DrawCall {
 /// Rasterises meshes CPU-side. Requires no GPU, no display, and no GPU
 /// driver — suitable for automated tests and CI.
 pub struct SoftwareDriver {
-    width:      u32,
-    height:     u32,
-    pixels:     Vec<u32>,  // ARGB packed u32
+    width: u32,
+    height: u32,
+    pixels: Vec<u32>, // ARGB packed u32
     clear_color: u32,
-    meshes:     Vec<StoredMesh>,
-    draw_calls:  Vec<DrawCall>,
+    meshes: Vec<StoredMesh>,
+    draw_calls: Vec<DrawCall>,
 }
 
 impl SoftwareDriver {
@@ -39,10 +39,10 @@ impl SoftwareDriver {
         Self {
             width,
             height,
-            pixels:      vec![0u32; (width * height) as usize],
+            pixels: vec![0u32; (width * height) as usize],
             clear_color: 0,
-            meshes:      Vec::new(),
-            draw_calls:  Vec::new(),
+            meshes: Vec::new(),
+            draw_calls: Vec::new(),
         }
     }
 
@@ -51,8 +51,12 @@ impl SoftwareDriver {
         &self.pixels
     }
 
-    pub fn width(&self)  -> u32 { self.width  }
-    pub fn height(&self) -> u32 { self.height }
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+    pub fn height(&self) -> u32 {
+        self.height
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -60,7 +64,7 @@ impl SoftwareDriver {
 // ---------------------------------------------------------------------------
 
 fn aspect_projection(width: u32, height: u32) -> glam::Mat3 {
-    let w = width  as f32;
+    let w = width as f32;
     let h = height as f32;
     if w > h {
         glam::Mat3::from_scale(glam::Vec2::new(h / w, 1.0))
@@ -76,7 +80,7 @@ impl GraphicsDriver for SoftwareDriver {
         if width == 0 || height == 0 {
             return;
         }
-        self.width  = width;
+        self.width = width;
         self.height = height;
         self.pixels = vec![0u32; (width * height) as usize];
     }
@@ -107,7 +111,7 @@ impl GraphicsDriver for SoftwareDriver {
         }
     }
 
-    fn present(&mut self) {}  // no-op in headless mode
+    fn present(&mut self) {} // no-op in headless mode
 
     fn clear(&mut self, color: [f32; 4]) {
         self.clear_color = pack_argb(color);
@@ -117,20 +121,22 @@ impl GraphicsDriver for SoftwareDriver {
         let handle = self.meshes.len() as MeshHandle;
         self.meshes.push(StoredMesh {
             vertices: vertices.to_vec(),
-            indices:  indices.to_vec(),
+            indices: indices.to_vec(),
         });
         handle
     }
 
     fn draw_mesh(&mut self, mesh: MeshHandle, transform: Mat3, color: [f32; 4]) {
         self.draw_calls.push(DrawCall {
-            handle:    mesh,
+            handle: mesh,
             transform,
-            tint:      color,
+            tint: color,
         });
     }
 
-    fn backend_name(&self) -> &'static str { "CPU" }
+    fn backend_name(&self) -> &'static str {
+        "CPU"
+    }
 
     fn surface_size(&self) -> (u32, u32) {
         (self.width, self.height)

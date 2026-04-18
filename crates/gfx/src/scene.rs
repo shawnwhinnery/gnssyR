@@ -1,11 +1,11 @@
-use glam::Vec2;
 use crate::{driver::GraphicsDriver, path::Path, style::Style, transform::Transform};
+use glam::Vec2;
 
 /// Axis-aligned bounding box.
 #[derive(Debug, Clone, Copy)]
 pub struct Rect {
     pub origin: Vec2,
-    pub size:   Vec2,
+    pub size: Vec2,
 }
 
 impl Rect {
@@ -16,14 +16,18 @@ impl Rect {
 
 /// A [`Path`] with an associated [`Style`] and local [`Transform`].
 pub struct Shape {
-    pub path:      Path,
-    pub style:     Style,
+    pub path: Path,
+    pub style: Style,
     pub transform: Transform,
 }
 
 impl Shape {
     pub fn new(path: Path, style: Style) -> Self {
-        Self { path, style, transform: Transform::identity() }
+        Self {
+            path,
+            style,
+            transform: Transform::identity(),
+        }
     }
 
     pub fn with_transform(mut self, t: Transform) -> Self {
@@ -34,13 +38,16 @@ impl Shape {
 
 /// A named group of [`Node`]s sharing a common [`Transform`].
 pub struct Group {
-    pub children:  Vec<Node>,
+    pub children: Vec<Node>,
     pub transform: Transform,
 }
 
 impl Group {
     pub fn new() -> Self {
-        Self { children: Vec::new(), transform: Transform::identity() }
+        Self {
+            children: Vec::new(),
+            transform: Transform::identity(),
+        }
     }
 
     pub fn with_transform(mut self, t: Transform) -> Self {
@@ -66,11 +73,15 @@ pub enum Node {
 }
 
 impl From<Shape> for Node {
-    fn from(s: Shape) -> Self { Node::Shape(s) }
+    fn from(s: Shape) -> Self {
+        Node::Shape(s)
+    }
 }
 
 impl From<Group> for Node {
-    fn from(g: Group) -> Self { Node::Group(g) }
+    fn from(g: Group) -> Self {
+        Node::Group(g)
+    }
 }
 
 /// Root of the frame. Walk the tree, tessellate, and submit to a driver.
@@ -112,8 +123,8 @@ fn render_group(group: &Group, parent_transform: Transform, driver: &mut dyn Gra
     let transform = parent_transform.then(group.transform);
     for node in &group.children {
         match node {
-            Node::Shape(shape)  => render_shape(shape, transform, driver),
-            Node::Group(child)  => render_group(child, transform, driver),
+            Node::Shape(shape) => render_shape(shape, transform, driver),
+            Node::Group(child) => render_group(child, transform, driver),
         }
     }
 }

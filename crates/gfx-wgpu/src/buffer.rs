@@ -4,8 +4,8 @@ use wgpu::util::DeviceExt;
 
 /// GPU-side vertex + index buffers for a single uploaded mesh.
 pub struct UploadedMesh {
-    pub vertex_buf:  wgpu::Buffer,
-    pub index_buf:   wgpu::Buffer,
+    pub vertex_buf: wgpu::Buffer,
+    pub index_buf: wgpu::Buffer,
     pub index_count: u32,
 }
 
@@ -25,7 +25,7 @@ impl MeshPool {
         &mut self,
         device: &wgpu::Device,
         vertices: &[Vertex],
-        indices:  &[u32],
+        indices: &[u32],
     ) -> MeshHandle {
         // Vertex is #[repr(C)] with only f32 fields — safe to view as bytes.
         let vertex_bytes = unsafe {
@@ -38,14 +38,14 @@ impl MeshPool {
         let index_bytes = bytemuck::cast_slice::<u32, u8>(indices);
 
         let vertex_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label:    Some("mesh_vertices"),
+            label: Some("mesh_vertices"),
             contents: vertex_bytes,
-            usage:    wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX,
         });
         let index_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label:    Some("mesh_indices"),
+            label: Some("mesh_indices"),
             contents: index_bytes,
-            usage:    wgpu::BufferUsages::INDEX,
+            usage: wgpu::BufferUsages::INDEX,
         });
 
         let handle = self.meshes.len() as MeshHandle;

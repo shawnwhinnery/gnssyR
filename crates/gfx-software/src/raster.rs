@@ -16,17 +16,17 @@ use glam::{Mat3, Vec2};
 /// before projection to pixel space. `tint` is multiplied with per-vertex
 /// colour before writing.
 pub(crate) fn rasterize(
-    pixels:    &mut [u32],
-    width:     u32,
-    height:    u32,
-    vertices:  &[Vertex],
-    indices:   &[u32],
+    pixels: &mut [u32],
+    width: u32,
+    height: u32,
+    vertices: &[Vertex],
+    indices: &[u32],
     transform: Mat3,
-    tint:      [f32; 4],
+    tint: [f32; 4],
 ) {
     let tri_count = indices.len() / 3;
     for t in 0..tri_count {
-        let i0 = indices[t * 3]     as usize;
+        let i0 = indices[t * 3] as usize;
         let i1 = indices[t * 3 + 1] as usize;
         let i2 = indices[t * 3 + 2] as usize;
 
@@ -62,7 +62,7 @@ fn transform_pos(t: Mat3, pos: [f32; 2]) -> Vec2 {
 
 fn clip_to_screen(clip: Vec2, width: u32, height: u32) -> Vec2 {
     Vec2::new(
-        (clip.x + 1.0) / 2.0 * width  as f32,
+        (clip.x + 1.0) / 2.0 * width as f32,
         (1.0 - clip.y) / 2.0 * height as f32,
     )
 }
@@ -88,19 +88,25 @@ fn pack_argb(r: f32, g: f32, b: f32, a: f32) -> u32 {
 /// with barycentric interpolation of vertex colours.
 fn rasterize_triangle(
     pixels: &mut [u32],
-    width:  u32,
+    width: u32,
     height: u32,
-    p0: Vec2, p1: Vec2, p2: Vec2,
-    c0: [f32; 4], c1: [f32; 4], c2: [f32; 4],
+    p0: Vec2,
+    p1: Vec2,
+    p2: Vec2,
+    c0: [f32; 4],
+    c1: [f32; 4],
+    c2: [f32; 4],
 ) {
     // Bounding box clamped to the framebuffer.
     let min_x = p0.x.min(p1.x).min(p2.x).floor().max(0.0) as i32;
     let min_y = p0.y.min(p1.y).min(p2.y).floor().max(0.0) as i32;
-    let max_x = (p0.x.max(p1.x).max(p2.x).ceil() as i32).min(width  as i32 - 1);
+    let max_x = (p0.x.max(p1.x).max(p2.x).ceil() as i32).min(width as i32 - 1);
     let max_y = (p0.y.max(p1.y).max(p2.y).ceil() as i32).min(height as i32 - 1);
 
     let denom = edge(p0, p1, p2);
-    if denom.abs() < 1e-6 { return; } // degenerate triangle
+    if denom.abs() < 1e-6 {
+        return;
+    } // degenerate triangle
 
     for py in min_y..=max_y {
         for px in min_x..=max_x {
@@ -110,7 +116,9 @@ fn rasterize_triangle(
             let w1 = edge(p2, p0, p) / denom;
             let w2 = edge(p0, p1, p) / denom;
 
-            if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 { continue; }
+            if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
+                continue;
+            }
 
             let r = w0 * c0[0] + w1 * c1[0] + w2 * c2[0];
             let g = w0 * c0[1] + w1 * c1[1] + w2 * c2[1];

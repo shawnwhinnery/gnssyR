@@ -26,6 +26,7 @@ All input is expressed as one of these variants:
 | `Button { player, button, pressed }` | A digital button is pressed or released |
 | `Axis { player, axis, value }` | An analogue axis changes; `value ∈ [-1.0, 1.0]` |
 | `MouseMove { dx, dy }` | Mouse cursor moves; delta in screen pixels |
+| `CursorMoved { x, y }` | Absolute cursor position; NDC `[-1.0, 1.0]`, Y-up, origin at window centre |
 | `GamepadConnected(player)` | A gamepad is recognised and assigned a slot |
 | `GamepadDisconnected(player)` | A gamepad is removed |
 

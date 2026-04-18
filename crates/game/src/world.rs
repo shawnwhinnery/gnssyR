@@ -1,0 +1,383 @@
+use glam::{Mat3, Vec2};
+use input::InputEvent;
+use physics::{Body, BodyHandle, Collider, PhysicsWorld};
+
+use crate::{
+    camera::Camera,
+    hud,
+    input::InputState,
+    player::{draw_players, Player, PLAYER_SPEED},
+    sandbox::GROUND_COLOR,
+};
+use gfx::{
+    shape::{circle, line, polygon},
+    style::{Fill, LineCap, LineJoin, Stroke, Style},
+    tessellate, Color,
+};
+
+// ---------------------------------------------------------------------------
+// Walls
+// ---------------------------------------------------------------------------
+
+pub struct Wall {
+    pub body: BodyHandle,
+    /// Single-char label shown in the collision HUD (C=circle, R=rect, T=triangle, O=octagon).
+    pub label: char,
+    pub fill_color: Color,
+}
+
+fn make_walls(physics: &mut PhysicsWorld) -> Vec<Wall> {
+    let mut walls = Vec::new();
+
+    // Circle — right side.
+    let h = physics.add_body(Body {
+        position: Vec2::new(3.0, 0.0),
+        velocity: Vec2::ZERO,
+        mass: f32::INFINITY,
+        restitution: 0.3,
+        collider: Collider::Circle { radius: 0.65 },
+    });
+    walls.push(Wall { body: h, label: 'C', fill_color: Color::hex(0x7C4DFF99) });
+
+    // Rectangle — left side.
+    let h = physics.add_body(Body {
+        position: Vec2::new(-3.0, 0.0),
+        velocity: Vec2::ZERO,
+        mass: f32::INFINITY,
+        restitution: 0.3,
+        collider: Collider::Convex {
+            vertices: vec![
+                Vec2::new(-0.8, -0.5),
+                Vec2::new(0.8, -0.5),
+                Vec2::new(0.8, 0.5),
+                Vec2::new(-0.8, 0.5),
+            ],
+        },
+    });
+    walls.push(Wall { body: h, label: 'R', fill_color: Color::hex(0xFF6D0099) });
+
+    // Triangle — top side (equilateral, CCW, circumradius 0.75).
+    let r = 0.75_f32;
+    let h = physics.add_body(Body {
+        position: Vec2::new(0.0, 3.0),
+        velocity: Vec2::ZERO,
+        mass: f32::INFINITY,
+        restitution: 0.3,
+        collider: Collider::Convex {
+            vertices: vec![
+                Vec2::new(-r * 0.866, -r * 0.5), // bottom-left
+                Vec2::new(r * 0.866, -r * 0.5),  // bottom-right
+                Vec2::new(0.0, r),                // top
+            ],
+        },
+    });
+    walls.push(Wall { body: h, label: 'T', fill_color: Color::hex(0x00BFA599) });
+
+    // Octagon — bottom side (circumradius 0.75, CCW via increasing angle).
+    let r = 0.75_f32;
+    let oct_verts: Vec<Vec2> = (0..8)
+        .map(|i| {
+            let angle = std::f32::consts::TAU * i as f32 / 8.0;
+            Vec2::new(r * angle.cos(), r * angle.sin())
+        })
+        .collect();
+    let h = physics.add_body(Body {
+        position: Vec2::new(0.0, -3.0),
+        velocity: Vec2::ZERO,
+        mass: f32::INFINITY,
+        restitution: 0.3,
+        collider: Collider::Convex { vertices: oct_verts },
+    });
+    walls.push(Wall { body: h, label: 'O', fill_color: Color::hex(0xFFD60099) });
+
+    walls
+}
+
+const TILE_SIZE: f32 = 0.1;
+
+pub struct World {
+    pub physics: PhysicsWorld,
+    pub players: Vec<Player>,
+    pub walls: Vec<Wall>,
+    pub camera: Camera,
+    start: std::time::Instant,
+    last_tick: std::time::Instant,
+    pub fps: f32,
+    pub cursor_ndc: Vec2,
+    input_state: InputState,
+}
+
+impl World {
+    pub fn new() -> Self {
+        let now = std::time::Instant::now();
+        let mut world = Self {
+            physics: PhysicsWorld::new(),
+            players: Vec::new(),
+            walls: Vec::new(),
+            camera: Camera::default(),
+            start: now,
+            last_tick: now,
+            fps: 0.0,
+            cursor_ndc: Vec2::ZERO,
+            input_state: InputState::default(),
+        };
+        world
+            .players
+            .push(Player::new(0, Vec2::ZERO, &mut world.physics));
+        world.walls = make_walls(&mut world.physics);
+        world
+    }
+
+    pub fn tick(&mut self, events: Vec<InputEvent>) {
+        let now = std::time::Instant::now();
+        let dt = now.duration_since(self.last_tick).as_secs_f32();
+        self.last_tick = now;
+        self.fps = self.fps * 0.9 + (1.0 / dt.max(1e-6)) * 0.1;
+
+        for event in &events {
+            if let InputEvent::CursorMoved { x, y } = event {
+                self.cursor_ndc = Vec2::new(*x, *y);
+            }
+        }
+
+        self.input_state.apply_events(&events, self.cursor_ndc);
+        let snapshot = self.input_state.snapshot();
+        for player in &mut self.players {
+            let intent = snapshot.player(player.slot);
+            let aim_dir = if player.slot == 0 && !intent.aim_from_stick {
+                let player_ndc =
+                    self.camera.world_to_ndc(self.physics.body(player.body).position);
+                let dir = self.cursor_ndc - player_ndc;
+                if dir.length_squared() > 1e-6 {
+                    dir.normalize()
+                } else {
+                    player.facing
+                }
+            } else {
+                intent.aim_dir
+            };
+            if aim_dir.length_squared() > 1e-6 {
+                player.facing = aim_dir;
+            }
+            self.physics.body_mut(player.body).velocity = intent.move_dir * PLAYER_SPEED;
+        }
+        self.physics.step(dt);
+    }
+
+    pub fn draw(&self, driver: &mut dyn gfx::GraphicsDriver) {
+        let backend = driver.backend_name();
+        let _elapsed = self.start.elapsed().as_secs_f32();
+        driver.clear(GROUND_COLOR);
+        draw_grid(driver, &self.camera);
+        draw_walls(&self.walls, &self.physics, driver, &self.camera);
+        draw_players(&self.players, &self.physics, driver, &self.camera);
+
+        // Collision HUD: collect which walls the player is touching.
+        let contacts = self.physics.contacts();
+        let player_body = self.players.first().map(|p| p.body);
+        let wall_hits: Vec<(char, bool)> = self
+            .walls
+            .iter()
+            .map(|w| {
+                let hit = player_body.map_or(false, |pb| {
+                    contacts
+                        .iter()
+                        .any(|(a, b, _)| (*a == pb && *b == w.body) || (*b == pb && *a == w.body))
+                });
+                (w.label, hit)
+            })
+            .collect();
+
+        hud::draw_fps(driver, self.fps);
+        hud::draw_backend(driver, backend);
+        hud::draw_mouse_pos(driver, self.cursor_ndc);
+        hud::draw_collision_hits(driver, &wall_hits);
+    }
+}
+
+impl Default for World {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn draw_walls(
+    walls: &[Wall],
+    physics: &PhysicsWorld,
+    driver: &mut dyn gfx::GraphicsDriver,
+    camera: &Camera,
+) {
+    for wall in walls {
+        let body = physics.body(wall.body);
+        let pos = body.position;
+        let style = Style {
+            fill: Some(Fill::Solid(wall.fill_color)),
+            stroke: Some(Stroke {
+                color: Color::hex(0xFFFFFFCC),
+                width: 0.006,
+                cap: LineCap::Round,
+                join: LineJoin::Round,
+            }),
+        };
+        match &body.collider {
+            Collider::Circle { radius } => {
+                let ndc = camera.world_to_ndc(pos);
+                draw_shape(driver, &circle(ndc, camera.scale(*radius)), &style, Mat3::IDENTITY);
+            }
+            Collider::Convex { vertices } => {
+                let ndc_verts: Vec<Vec2> =
+                    vertices.iter().map(|v| camera.world_to_ndc(pos + *v)).collect();
+                draw_shape(driver, &polygon(&ndc_verts), &style, Mat3::IDENTITY);
+            }
+            Collider::Mesh { .. } => {}
+        }
+    }
+}
+
+fn draw_grid(driver: &mut dyn gfx::GraphicsDriver, camera: &Camera) {
+    let grid_style = Style::stroked(Stroke::solid(Color::hex(0x000000FF), 0.003));
+    let first = (-camera.half_view / TILE_SIZE).floor() as i32;
+    let last = (camera.half_view / TILE_SIZE).ceil() as i32;
+
+    for i in first..=last {
+        let coord = camera.scale(i as f32 * TILE_SIZE);
+        draw_shape(
+            driver,
+            &line(Vec2::new(coord, -1.0), Vec2::new(coord, 1.0)),
+            &grid_style,
+            Mat3::IDENTITY,
+        );
+        draw_shape(
+            driver,
+            &line(Vec2::new(-1.0, coord), Vec2::new(1.0, coord)),
+            &grid_style,
+            Mat3::IDENTITY,
+        );
+    }
+}
+
+fn draw_shape(
+    driver: &mut dyn gfx::GraphicsDriver,
+    path: &gfx::Path,
+    style: &gfx::Style,
+    transform: Mat3,
+) {
+    for mesh in tessellate(path, style) {
+        let handle = driver.upload_mesh(&mesh.vertices, &mesh.indices);
+        driver.draw_mesh(handle, transform, [1.0, 1.0, 1.0, 1.0]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gfx::driver::GraphicsDriver;
+    use gfx_software::SoftwareDriver;
+    use input::{
+        event::{Axis, Button, InputEvent},
+        player::PlayerId,
+    };
+
+    #[test]
+    fn world_tick_advances_player() {
+        let mut world = World::new();
+        world.tick(vec![InputEvent::Button {
+            player: PlayerId::P1,
+            button: Button::DPadRight,
+            pressed: true,
+        }]);
+        let pos = world.physics.body(world.players[0].body).position;
+        assert!(pos.x > 0.0);
+    }
+
+    #[test]
+    fn world_tick_applies_expected_player_speed() {
+        let mut world = World::new();
+        world.tick(vec![InputEvent::Button {
+            player: PlayerId::P1,
+            button: Button::DPadRight,
+            pressed: true,
+        }]);
+        let velocity = world.physics.body(world.players[0].body).velocity;
+        assert!((velocity.length() - PLAYER_SPEED).abs() < 1e-5);
+    }
+
+    #[test]
+    fn releasing_input_stops_player() {
+        let mut world = World::new();
+        world.tick(vec![InputEvent::Button {
+            player: PlayerId::P1,
+            button: Button::DPadRight,
+            pressed: true,
+        }]);
+        world.tick(vec![InputEvent::Button {
+            player: PlayerId::P1,
+            button: Button::DPadRight,
+            pressed: false,
+        }]);
+        let velocity = world.physics.body(world.players[0].body).velocity;
+        assert_eq!(velocity, Vec2::ZERO);
+    }
+
+    #[test]
+    fn held_dpad_continues_moving_without_repeat_events() {
+        let mut world = World::new();
+        world.tick(vec![InputEvent::Button {
+            player: PlayerId::P1,
+            button: Button::DPadRight,
+            pressed: true,
+        }]);
+        let x1 = world.physics.body(world.players[0].body).position.x;
+        world.tick(vec![]);
+        let x2 = world.physics.body(world.players[0].body).position.x;
+        assert!(x2 > x1);
+    }
+
+    #[test]
+    fn cursor_updates_player_facing() {
+        let mut world = World::new();
+        world.tick(vec![InputEvent::CursorMoved { x: 0.0, y: 1.0 }]);
+        assert_eq!(world.players[0].facing, Vec2::Y);
+    }
+
+    /// Regression: aim must point from the player's position to the cursor, not
+    /// from the screen centre.  With the player at world (2.5, 0) the player's
+    /// NDC position is (0.5, 0) (half_view == 5).  A cursor at NDC (0, 1)
+    /// should produce facing = normalize((0, 1) - (0.5, 0)) = normalize((-0.5, 1)).
+    /// The old (wrong) code would have produced normalize((0, 1)) = Vec2::Y.
+    #[test]
+    fn cursor_aim_is_relative_to_player_position() {
+        let mut world = World::new();
+        // Place the player off-centre at a known world position.
+        world.physics.body_mut(world.players[0].body).position = Vec2::new(2.5, 0.0);
+        world.tick(vec![InputEvent::CursorMoved { x: 0.0, y: 1.0 }]);
+        // player NDC = (2.5 / 5.0, 0.0) = (0.5, 0.0)
+        // cursor NDC = (0.0, 1.0)
+        // expected dir = normalize((0.0, 1.0) - (0.5, 0.0)) = normalize((-0.5, 1.0))
+        let expected = Vec2::new(-0.5, 1.0).normalize();
+        assert!((world.players[0].facing - expected).length() < 1e-5);
+    }
+
+    #[test]
+    fn right_stick_overrides_cursor_facing() {
+        let mut world = World::new();
+        world.tick(vec![
+            InputEvent::CursorMoved { x: 0.0, y: 1.0 },
+            InputEvent::Axis {
+                player: PlayerId::P1,
+                axis: Axis::RightX,
+                value: 1.0,
+            },
+        ]);
+        assert_eq!(world.players[0].facing, Vec2::X);
+    }
+
+    #[test]
+    fn world_draw_does_not_panic() {
+        let mut driver = SoftwareDriver::headless(256, 256);
+        let world = World::new();
+        driver.begin_frame();
+        world.draw(&mut driver);
+        driver.end_frame();
+    }
+}

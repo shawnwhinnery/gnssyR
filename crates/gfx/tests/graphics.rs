@@ -3,8 +3,9 @@ use std::f32::consts::{PI, TAU};
 use gfx::color::Color;
 use gfx::path::{Path, PathBuilder};
 use gfx::scene::{Group, Node, Scene, Shape};
-use gfx::shape::{circle, ellipse, line, polygon, polyline, rect, regular_polygon,
-                  rounded_rect, star};
+use gfx::shape::{
+    circle, ellipse, line, polygon, polyline, rect, regular_polygon, rounded_rect, star,
+};
 use gfx::style::{LineCap, LineJoin, Stroke, Style};
 use gfx::transform::Transform;
 use glam::{Mat3, Vec2};
@@ -24,16 +25,20 @@ fn approx_vec(a: Vec2, b: Vec2, eps: f32) -> bool {
 use gfx::driver::{GraphicsDriver, MeshHandle, Vertex};
 #[derive(Default)]
 struct SpyDriver {
-    begin_frames:  u32,
-    end_frames:    u32,
-    upload_calls:  u32,
-    draw_calls:    u32,
+    begin_frames: u32,
+    end_frames: u32,
+    upload_calls: u32,
+    draw_calls: u32,
     last_transform: Option<Mat3>,
 }
 impl GraphicsDriver for SpyDriver {
-    fn begin_frame(&mut self)  { self.begin_frames += 1; }
-    fn end_frame(&mut self)    { self.end_frames   += 1; }
-    fn present(&mut self)      {}
+    fn begin_frame(&mut self) {
+        self.begin_frames += 1;
+    }
+    fn end_frame(&mut self) {
+        self.end_frames += 1;
+    }
+    fn present(&mut self) {}
     fn clear(&mut self, _: [f32; 4]) {}
     fn upload_mesh(&mut self, _: &[Vertex], _: &[u32]) -> MeshHandle {
         let h = self.upload_calls;
@@ -44,7 +49,13 @@ impl GraphicsDriver for SpyDriver {
         self.draw_calls += 1;
         self.last_transform = Some(transform);
     }
-    fn surface_size(&self) -> (u32, u32) { (800, 600) }
+    fn resize(&mut self, _: u32, _: u32) {}
+    fn backend_name(&self) -> &'static str {
+        "spy"
+    }
+    fn surface_size(&self) -> (u32, u32) {
+        (800, 600)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +74,7 @@ fn color_rgba_components() {
 #[test]
 fn color_hex_parses_rrggbbaa() {
     let c = Color::hex(0xFF8040A0);
-    assert!(approx(c.r, 1.0,   2.0 / 255.0));
+    assert!(approx(c.r, 1.0, 2.0 / 255.0));
     assert!(approx(c.g, 0.502, 2.0 / 255.0));
     assert!(approx(c.b, 0.251, 2.0 / 255.0));
     assert!(approx(c.a, 0.627, 2.0 / 255.0));
@@ -164,7 +175,7 @@ fn transform_compose_order() {
     let tx = Transform::translate(1.0, 0.0);
     let sc = Transform::scale(2.0, 2.0);
     let composed = tx.then(sc).apply(Vec2::ZERO);
-    let manual   = sc.apply(tx.apply(Vec2::ZERO));
+    let manual = sc.apply(tx.apply(Vec2::ZERO));
     assert!(approx_vec(composed, manual, 1e-5));
     assert!(approx_vec(composed, Vec2::new(2.0, 0.0), 1e-5));
 }
@@ -185,7 +196,10 @@ fn transform_singular_has_no_inverse() {
 #[test]
 fn transform_default_is_identity() {
     let p = Vec2::new(9.0, -3.0);
-    assert_eq!(Transform::default().apply(p), Transform::identity().apply(p));
+    assert_eq!(
+        Transform::default().apply(p),
+        Transform::identity().apply(p)
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +257,11 @@ fn path_builder_quad_cubic_arc_counted() {
     let p = PathBuilder::new()
         .move_to(Vec2::ZERO)
         .quad_to(Vec2::new(0.5, 1.0), Vec2::X)
-        .cubic_to(Vec2::new(0.2, 0.5), Vec2::new(0.8, 0.5), Vec2::new(2.0, 0.0))
+        .cubic_to(
+            Vec2::new(0.2, 0.5),
+            Vec2::new(0.8, 0.5),
+            Vec2::new(2.0, 0.0),
+        )
         .arc_to(Vec2::ZERO, 1.0, 0.0, PI)
         .build();
     assert_eq!(seg_count(&p), 4);
@@ -254,23 +272,41 @@ fn path_builder_quad_cubic_arc_counted() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn circle_is_closed()         { assert!(circle(Vec2::ZERO, 1.0).is_closed()); }
+fn circle_is_closed() {
+    assert!(circle(Vec2::ZERO, 1.0).is_closed());
+}
 #[test]
-fn ellipse_is_closed()        { assert!(ellipse(Vec2::ZERO, 2.0, 1.0).is_closed()); }
+fn ellipse_is_closed() {
+    assert!(ellipse(Vec2::ZERO, 2.0, 1.0).is_closed());
+}
 #[test]
-fn rect_is_closed()           { assert!(rect(Vec2::ZERO, Vec2::ONE).is_closed()); }
+fn rect_is_closed() {
+    assert!(rect(Vec2::ZERO, Vec2::ONE).is_closed());
+}
 #[test]
-fn rounded_rect_is_closed()   { assert!(rounded_rect(Vec2::ZERO, Vec2::splat(4.0), 0.5).is_closed()); }
+fn rounded_rect_is_closed() {
+    assert!(rounded_rect(Vec2::ZERO, Vec2::splat(4.0), 0.5).is_closed());
+}
 #[test]
-fn regular_polygon_is_closed(){ assert!(regular_polygon(Vec2::ZERO, 1.0, 5).is_closed()); }
+fn regular_polygon_is_closed() {
+    assert!(regular_polygon(Vec2::ZERO, 1.0, 5).is_closed());
+}
 #[test]
-fn star_is_closed()           { assert!(star(Vec2::ZERO, 2.0, 1.0, 5).is_closed()); }
+fn star_is_closed() {
+    assert!(star(Vec2::ZERO, 2.0, 1.0, 5).is_closed());
+}
 #[test]
-fn line_is_open()             { assert!(!line(Vec2::ZERO, Vec2::X).is_closed()); }
+fn line_is_open() {
+    assert!(!line(Vec2::ZERO, Vec2::X).is_closed());
+}
 #[test]
-fn polyline_is_open()         { assert!(!polyline(&[Vec2::ZERO, Vec2::X, Vec2::Y]).is_closed()); }
+fn polyline_is_open() {
+    assert!(!polyline(&[Vec2::ZERO, Vec2::X, Vec2::Y]).is_closed());
+}
 #[test]
-fn polygon_is_closed()        { assert!(polygon(&[Vec2::ZERO, Vec2::X, Vec2::Y]).is_closed()); }
+fn polygon_is_closed() {
+    assert!(polygon(&[Vec2::ZERO, Vec2::X, Vec2::Y]).is_closed());
+}
 
 #[test]
 fn rounded_rect_zero_radius_is_closed() {
@@ -328,13 +364,16 @@ fn style_stroked_has_stroke_no_fill() {
 #[test]
 fn stroke_solid_defaults() {
     let s = Stroke::solid(Color::BLACK, 2.0);
-    assert_eq!(s.cap,  LineCap::Butt);
+    assert_eq!(s.cap, LineCap::Butt);
     assert_eq!(s.join, LineJoin::Miter);
 }
 
 #[test]
 fn style_no_fill_no_stroke_constructible() {
-    let _ = Style { fill: None, stroke: None };
+    let _ = Style {
+        fill: None,
+        stroke: None,
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -366,27 +405,33 @@ fn scene_render_empty_no_driver_calls() {
     let mut spy = SpyDriver::default();
     Scene::new().render(&mut spy);
     assert_eq!(spy.upload_calls, 0);
-    assert_eq!(spy.draw_calls,   0);
+    assert_eq!(spy.draw_calls, 0);
 }
 
 #[test]
 fn scene_render_calls_begin_and_end_frame() {
     let mut spy = SpyDriver::default();
     let mut s = Scene::new();
-    s.add(Shape::new(rect(Vec2::ZERO, Vec2::ONE), Style::filled(Color::WHITE)));
+    s.add(Shape::new(
+        rect(Vec2::ZERO, Vec2::ONE),
+        Style::filled(Color::WHITE),
+    ));
     s.render(&mut spy);
     assert_eq!(spy.begin_frames, 1);
-    assert_eq!(spy.end_frames,   1);
+    assert_eq!(spy.end_frames, 1);
 }
 
 #[test]
 fn scene_render_filled_shape_calls_upload_and_draw() {
     let mut spy = SpyDriver::default();
     let mut s = Scene::new();
-    s.add(Shape::new(rect(Vec2::ZERO, Vec2::ONE), Style::filled(Color::WHITE)));
+    s.add(Shape::new(
+        rect(Vec2::ZERO, Vec2::ONE),
+        Style::filled(Color::WHITE),
+    ));
     s.render(&mut spy);
     assert!(spy.upload_calls >= 1);
-    assert!(spy.draw_calls   >= 1);
+    assert!(spy.draw_calls >= 1);
 }
 
 #[test]
@@ -394,7 +439,7 @@ fn scene_render_fill_and_stroke_calls_draw_twice() {
     let mut spy = SpyDriver::default();
     let mut s = Scene::new();
     let style = Style {
-        fill:   Some(gfx::style::Fill::Solid(Color::WHITE)),
+        fill: Some(gfx::style::Fill::Solid(Color::WHITE)),
         stroke: Some(Stroke::solid(Color::BLACK, 1.0)),
     };
     s.add(Shape::new(rect(Vec2::ZERO, Vec2::ONE), style));
@@ -452,7 +497,11 @@ fn path_point_at_start() {
 
 #[test]
 fn path_point_at_end() {
-    assert!(approx_vec(hline().point_at(1.0), Vec2::new(10.0, 0.0), 1e-4));
+    assert!(approx_vec(
+        hline().point_at(1.0),
+        Vec2::new(10.0, 0.0),
+        1e-4
+    ));
 }
 
 #[test]
@@ -489,7 +538,11 @@ fn path_split_at_half_lengths() {
 fn path_trim_length() {
     let p = hline();
     let trimmed = p.trim(0.25, 0.75);
-    assert!(approx(trimmed.length(), p.length() * 0.5, p.length() * 0.01));
+    assert!(approx(
+        trimmed.length(),
+        p.length() * 0.5,
+        p.length() * 0.01
+    ));
 }
 
 #[test]

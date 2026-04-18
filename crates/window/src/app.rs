@@ -4,8 +4,8 @@ use input::event::{Button, InputEvent};
 use input::player::PlayerId;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
-use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 // ---------------------------------------------------------------------------
@@ -41,12 +41,13 @@ impl App {
         let mut app = WinitApp {
             state,
             input,
-            make_driver:  Some(make_driver),
-            driver:       None,
+            make_driver: Some(make_driver),
+            driver: None,
             tick,
             render,
-            window:       None,
+            window: None,
             pending_keys: Vec::new(),
+            win_size: (1, 1),
         };
         event_loop.run_app(&mut app).expect("event loop error");
     }
@@ -59,12 +60,12 @@ impl App {
     /// Use this when testing code that depends on the driver being created
     /// lazily — e.g. to verify the factory is actually invoked.
     pub fn run_frames_with_factory<S, I, D, F, T, R>(
-        state:       S,
-        input:       I,
+        state: S,
+        input: I,
         make_driver: F,
-        tick:        T,
-        render:      R,
-        n:           usize,
+        tick: T,
+        render: R,
+        n: usize,
     ) where
         F: FnOnce() -> D,
         I: InputBackend,
@@ -80,10 +81,10 @@ impl App {
     ///
     /// The driver is passed directly (no window handle needed).
     pub fn run_frames<S, I, D, T, R>(
-        mut state:  S,
-        mut input:  I,
+        mut state: S,
+        mut input: I,
         mut driver: D,
-        mut tick:   T,
+        mut tick: T,
         mut render: R,
         n: usize,
     ) where
@@ -103,10 +104,10 @@ impl App {
 // ---------------------------------------------------------------------------
 
 fn execute_frame<S, I, D, T, R>(
-    state:  &mut S,
-    input:  &mut I,
+    state: &mut S,
+    input: &mut I,
     driver: &mut D,
-    tick:   &mut T,
+    tick: &mut T,
     render: &mut R,
 ) where
     I: InputBackend,
@@ -127,12 +128,15 @@ fn execute_frame<S, I, D, T, R>(
 // ---------------------------------------------------------------------------
 
 fn translate_key(key: PhysicalKey) -> Option<Button> {
-    let PhysicalKey::Code(code) = key else { return None };
+    let PhysicalKey::Code(code) = key else {
+        return None;
+    };
     Some(match code {
-        KeyCode::KeyW     | KeyCode::ArrowUp    => Button::DPadUp,
-        KeyCode::KeyS     | KeyCode::ArrowDown  => Button::DPadDown,
-        KeyCode::KeyA     | KeyCode::ArrowLeft  => Button::DPadLeft,
-        KeyCode::KeyD     | KeyCode::ArrowRight => Button::DPadRight,
+        KeyCode::KeyW | KeyCode::ArrowUp => Button::DPadUp,
+        KeyCode::KeyS | KeyCode::ArrowDown => Button::DPadDown,
+        KeyCode::KeyA | KeyCode::ArrowLeft => Button::DPadLeft,
+        KeyCode::KeyD | KeyCode::ArrowRight => Button::DPadRight,
+        KeyCode::Escape => Button::Key(input::event::KeyCode::Escape),
         _ => return None,
     })
 }
@@ -142,16 +146,18 @@ fn translate_key(key: PhysicalKey) -> Option<Button> {
 // ---------------------------------------------------------------------------
 
 struct WinitApp<S, I, D, F, T, R> {
-    state:        S,
-    input:        I,
-    make_driver:  Option<F>,
+    state: S,
+    input: I,
+    make_driver: Option<F>,
     // driver is declared before window so it is dropped first,
     // which is required when the driver holds a raw surface handle.
-    driver:       Option<D>,
-    tick:         T,
-    render:       R,
-    window:       Option<Window>,
+    driver: Option<D>,
+    tick: T,
+    render: R,
+    window: Option<Window>,
     pending_keys: Vec<InputEvent>,
+    // Physical pixel dimensions used to convert CursorMoved positions to NDC.
+    win_size: (u32, u32),
 }
 
 impl<S, I, D, F, T, R> ApplicationHandler for WinitApp<S, I, D, F, T, R>
@@ -168,33 +174,40 @@ where
             .create_window(attrs)
             .expect("failed to create window");
 
+        let size = window.inner_size();
+        self.win_size = (size.width.max(1), size.height.max(1));
+
         let driver = self.make_driver.take().unwrap()(&window);
         self.driver = Some(driver);
         self.window = Some(window);
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
             WindowEvent::Resized(new_size) => {
+                self.win_size = (new_size.width.max(1), new_size.height.max(1));
                 if let Some(driver) = self.driver.as_mut() {
                     driver.resize(new_size.width, new_size.height);
                 }
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                let (w, h) = self.win_size;
+                let x = ((position.x as f32 / (w as f32 * 0.5)) - 1.0).clamp(-1.0, 1.0);
+                let y = (1.0 - position.y as f32 / (h as f32 * 0.5)).clamp(-1.0, 1.0);
+                self.pending_keys.push(InputEvent::CursorMoved { x, y });
+            }
             WindowEvent::KeyboardInput { event, .. } => {
                 // Don't re-emit OS key-repeat events — we track held state ourselves.
-                if event.repeat { return; }
+                if event.repeat {
+                    return;
+                }
                 if let Some(button) = translate_key(event.physical_key) {
                     let pressed = event.state == ElementState::Pressed;
                     self.pending_keys.push(InputEvent::Button {
-                        player:  PlayerId::P1,
+                        player: PlayerId::P1,
                         button,
                         pressed,
                     });

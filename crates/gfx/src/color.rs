@@ -8,9 +8,24 @@ pub struct Color {
 }
 
 impl Color {
-    pub const BLACK: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
-    pub const WHITE: Color = Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
-    pub const TRANSPARENT: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+    pub const BLACK: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
+    pub const WHITE: Color = Color {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    };
+    pub const TRANSPARENT: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 0.0,
+    };
 
     pub fn rgba(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
@@ -21,8 +36,8 @@ impl Color {
         Self {
             r: ((hex >> 24) & 0xFF) as f32 / 255.0,
             g: ((hex >> 16) & 0xFF) as f32 / 255.0,
-            b: ((hex >>  8) & 0xFF) as f32 / 255.0,
-            a: ( hex        & 0xFF) as f32 / 255.0,
+            b: ((hex >> 8) & 0xFF) as f32 / 255.0,
+            a: (hex & 0xFF) as f32 / 255.0,
         }
     }
 

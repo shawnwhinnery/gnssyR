@@ -1,36 +1,36 @@
+use crate::path::{Path, PathBuilder};
 /// Shape primitive constructors — all return a [`Path`].
 ///
 /// None of these carry style or transform; they are pure geometry.
 /// Apply a [`Style`] and [`Transform`] when adding to a [`Scene`].
 use glam::Vec2;
-use crate::path::{Path, PathBuilder};
 use std::f32::consts::TAU;
 
 pub fn circle(center: Vec2, radius: f32) -> Path {
     // Approximate circle with a cubic bezier arc (4-segment approximation).
-    let k = 0.5522847498;  // magic constant for circle → bezier
+    let k = 0.5522847498; // magic constant for circle → bezier
     let r = radius;
     PathBuilder::new()
         .move_to(center + Vec2::new(r, 0.0))
         .cubic_to(
-            center + Vec2::new(r,     r * k),
+            center + Vec2::new(r, r * k),
             center + Vec2::new(r * k, r),
-            center + Vec2::new(0.0,   r),
+            center + Vec2::new(0.0, r),
         )
         .cubic_to(
             center + Vec2::new(-r * k, r),
-            center + Vec2::new(-r,     r * k),
-            center + Vec2::new(-r,     0.0),
+            center + Vec2::new(-r, r * k),
+            center + Vec2::new(-r, 0.0),
         )
         .cubic_to(
-            center + Vec2::new(-r,    -r * k),
+            center + Vec2::new(-r, -r * k),
             center + Vec2::new(-r * k, -r),
-            center + Vec2::new(0.0,   -r),
+            center + Vec2::new(0.0, -r),
         )
         .cubic_to(
             center + Vec2::new(r * k, -r),
-            center + Vec2::new(r,    -r * k),
-            center + Vec2::new(r,     0.0),
+            center + Vec2::new(r, -r * k),
+            center + Vec2::new(r, 0.0),
         )
         .close()
 }
@@ -40,24 +40,24 @@ pub fn ellipse(center: Vec2, rx: f32, ry: f32) -> Path {
     PathBuilder::new()
         .move_to(center + Vec2::new(rx, 0.0))
         .cubic_to(
-            center + Vec2::new(rx,      ry * k),
-            center + Vec2::new(rx * k,  ry),
-            center + Vec2::new(0.0,     ry),
+            center + Vec2::new(rx, ry * k),
+            center + Vec2::new(rx * k, ry),
+            center + Vec2::new(0.0, ry),
         )
         .cubic_to(
             center + Vec2::new(-rx * k, ry),
-            center + Vec2::new(-rx,     ry * k),
-            center + Vec2::new(-rx,     0.0),
+            center + Vec2::new(-rx, ry * k),
+            center + Vec2::new(-rx, 0.0),
         )
         .cubic_to(
-            center + Vec2::new(-rx,    -ry * k),
+            center + Vec2::new(-rx, -ry * k),
             center + Vec2::new(-rx * k, -ry),
-            center + Vec2::new(0.0,    -ry),
+            center + Vec2::new(0.0, -ry),
         )
         .cubic_to(
             center + Vec2::new(rx * k, -ry),
-            center + Vec2::new(rx,    -ry * k),
-            center + Vec2::new(rx,     0.0),
+            center + Vec2::new(rx, -ry * k),
+            center + Vec2::new(rx, 0.0),
         )
         .close()
 }
@@ -82,13 +82,29 @@ pub fn rounded_rect(origin: Vec2, size: Vec2, r: f32) -> Path {
     PathBuilder::new()
         .move_to(Vec2::new(x0 + r, y0))
         .line_to(Vec2::new(x1 - r, y0))
-        .cubic_to(Vec2::new(x1 - r + k, y0), Vec2::new(x1, y0 + r - k), Vec2::new(x1, y0 + r))
+        .cubic_to(
+            Vec2::new(x1 - r + k, y0),
+            Vec2::new(x1, y0 + r - k),
+            Vec2::new(x1, y0 + r),
+        )
         .line_to(Vec2::new(x1, y1 - r))
-        .cubic_to(Vec2::new(x1, y1 - r + k), Vec2::new(x1 - r + k, y1), Vec2::new(x1 - r, y1))
+        .cubic_to(
+            Vec2::new(x1, y1 - r + k),
+            Vec2::new(x1 - r + k, y1),
+            Vec2::new(x1 - r, y1),
+        )
         .line_to(Vec2::new(x0 + r, y1))
-        .cubic_to(Vec2::new(x0 + r - k, y1), Vec2::new(x0, y1 - r + k), Vec2::new(x0, y1 - r))
+        .cubic_to(
+            Vec2::new(x0 + r - k, y1),
+            Vec2::new(x0, y1 - r + k),
+            Vec2::new(x0, y1 - r),
+        )
         .line_to(Vec2::new(x0, y0 + r))
-        .cubic_to(Vec2::new(x0, y0 + r - k), Vec2::new(x0 + r - k, y0), Vec2::new(x0 + r, y0))
+        .cubic_to(
+            Vec2::new(x0, y0 + r - k),
+            Vec2::new(x0 + r - k, y0),
+            Vec2::new(x0 + r, y0),
+        )
         .close()
 }
 
