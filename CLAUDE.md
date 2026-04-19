@@ -35,10 +35,11 @@ See [crates/index.md](crates/index.md) for a one-line summary of every crate.
 
 `crates/game` contains a pixel-level regression test for the GFX showcase scene:
 
-- **Location:** `crates/game/tests/integration/main.rs` — `gfx_scene_snapshot`
+- **Test:** `crates/game/tests/integration/main.rs` — `gfx_scene_snapshot`
 - **Golden file:** `crates/game/tests/snapshots/gfx_scene.bin` — committed to the repo; 512×512 ARGB pixels as little-endian `u32` bytes
-- **Render function:** `game::scene::draw_scene(&mut driver)` in `crates/game/src/scene.rs` — used by both the binary and the test
+- **Scene:** `GfxShowcaseScene` in `crates/game/tests/integration/scenes/gfx_showcase.rs` — exercises every shape primitive, style variant, and transform helper; test-only, not a production game scene
+- **Test scenes folder:** `crates/game/tests/integration/scenes/` — place all snapshot-test-dedicated scenes here, separate from production scenes under `crates/game/src/scenes/`
 - **Regenerate after intentional visual change:** `UPDATE_SNAPSHOTS=1 cargo test -p game`
-- **On failure:** an `gfx_scene.actual.bin` is written next to the golden file for inspection
+- **On failure:** a `gfx_scene.actual.bin` is written next to the golden file for inspection
 
 

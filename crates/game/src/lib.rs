@@ -4,7 +4,6 @@ pub mod input;
 pub mod mode;
 pub mod pause;
 pub mod player;
-pub mod scene;
 pub mod scenes;
 
 pub use mode::GameMode;

@@ -8,7 +8,8 @@
 
 - Current spec placeholder: `crates/game/game.md`
 - Integration tests: `crates/game/tests/integration/main.rs`
-- Scene rendering entrypoint: `crates/game/src/scene.rs` (`draw_scene`)
+- Production scenes: `crates/game/src/scenes/` — `Scene` trait + `SandboxScene`
+- Test-only scenes: `crates/game/tests/integration/scenes/` — scenes used exclusively for snapshot tests (e.g. `GfxShowcaseScene`)
 - Runtime glue: `crates/game/src/main.rs`, `crates/game/src/lib.rs`
 
 ## Current Project Guarantees
@@ -21,7 +22,7 @@
 ## Editing Guidance
 
 - Keep game-side code compatible with both headless tests and interactive runtime.
-- Route reusable render logic through shared scene functions used by both tests and executable code.
+- Production scenes (`src/scenes/`) are used by both the runtime and integration tests. Test-only scenes (`tests/integration/scenes/`) are used exclusively by snapshot tests — do not import them from the library crate.
 - Treat snapshot diffs as signal: confirm intentional visual changes before updating goldens.
 - As gameplay spec solidifies, promote requirements from `game.md` into concrete tests first.
 
