@@ -45,3 +45,8 @@ pollster = "0.3"
 
 # Safe byte-casting for GPU buffer uploads
 bytemuck = { version = "1", features = ["derive"] }
+
+# Immediate-mode UI
+egui        = "0.29"
+egui-wgpu   = "0.29"
+egui-winit  = "0.29"

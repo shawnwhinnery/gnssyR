@@ -4,6 +4,7 @@ use gfx::driver::{GraphicsDriver, MeshHandle, Vertex};
 use glam::Mat3;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use wgpu::util::DeviceExt;
+use window::EguiRenderer;
 
 // ---------------------------------------------------------------------------
 // Per-draw uniform layout (must match fill.wgsl `Uniforms` struct)
@@ -44,6 +45,17 @@ struct DrawCall {
 }
 
 // ---------------------------------------------------------------------------
+// Pending egui frame data (stored between prepare_egui and end_frame)
+// ---------------------------------------------------------------------------
+
+struct EguiData {
+    primitives: Vec<egui::ClippedPrimitive>,
+    textures_delta: egui::TexturesDelta,
+    screen_size_px: [u32; 2],
+    pixels_per_point: f32,
+}
+
+// ---------------------------------------------------------------------------
 // Driver
 // ---------------------------------------------------------------------------
 
@@ -58,6 +70,8 @@ pub struct WgpuDriver {
     draw_calls: Vec<DrawCall>,
     clear_color: wgpu::Color,
     current_texture: Option<wgpu::SurfaceTexture>,
+    egui_renderer: egui_wgpu::Renderer,
+    pending_egui: Option<EguiData>,
 }
 
 impl WgpuDriver {
@@ -115,6 +129,7 @@ impl WgpuDriver {
         surface.configure(&device, &config);
 
         let pipeline = FillPipeline::new(&device, format);
+        let egui_renderer = egui_wgpu::Renderer::new(&device, format, None, 1, false);
 
         Self {
             device,
@@ -126,6 +141,8 @@ impl WgpuDriver {
             draw_calls: Vec::new(),
             clear_color: wgpu::Color::BLACK,
             current_texture: None,
+            egui_renderer,
+            pending_egui: None,
         }
     }
 }
@@ -162,6 +179,7 @@ impl GraphicsDriver for WgpuDriver {
         // Recycle all mesh buffers from the previous frame.
         self.mesh_pool.clear();
         self.draw_calls.clear();
+        self.pending_egui = None;
 
         match self.surface.get_current_texture() {
             Ok(texture) => self.current_texture = Some(texture),
@@ -263,6 +281,51 @@ impl GraphicsDriver for WgpuDriver {
             }
         }
 
+        // Render egui on top of game content (same encoder, Load op preserves pixels).
+        if let Some(egui) = self.pending_egui.take() {
+            let screen_descriptor = egui_wgpu::ScreenDescriptor {
+                size_in_pixels: egui.screen_size_px,
+                pixels_per_point: egui.pixels_per_point,
+            };
+
+            for (id, image_delta) in &egui.textures_delta.set {
+                self.egui_renderer
+                    .update_texture(&self.device, &self.queue, *id, image_delta);
+            }
+            self.egui_renderer.update_buffers(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &egui.primitives,
+                &screen_descriptor,
+            );
+
+            {
+                let egui_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("egui_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                // egui_wgpu::Renderer::render requires RenderPass<'static>
+                let mut egui_pass = egui_pass.forget_lifetime();
+                self.egui_renderer
+                    .render(&mut egui_pass, &egui.primitives, &screen_descriptor);
+            }
+
+            for id in &egui.textures_delta.free {
+                self.egui_renderer.free_texture(id);
+            }
+        }
+
         self.queue.submit([encoder.finish()]);
     }
 
@@ -278,5 +341,26 @@ impl GraphicsDriver for WgpuDriver {
 
     fn surface_size(&self) -> (u32, u32) {
         (self.config.width, self.config.height)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EguiRenderer impl — stores tessellated UI data for end_frame to consume
+// ---------------------------------------------------------------------------
+
+impl EguiRenderer for WgpuDriver {
+    fn prepare_egui(
+        &mut self,
+        primitives: Vec<egui::ClippedPrimitive>,
+        textures_delta: egui::TexturesDelta,
+        screen_size_px: [u32; 2],
+        pixels_per_point: f32,
+    ) {
+        self.pending_egui = Some(EguiData {
+            primitives,
+            textures_delta,
+            screen_size_px,
+            pixels_per_point,
+        });
     }
 }

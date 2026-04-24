@@ -18,6 +18,7 @@ glam         = { workspace = true }
 input        = { workspace = true }
 physics      = { workspace = true }
 window       = { workspace = true }
+egui         = { workspace = true }
 
 [features]
 default = ["gilrs"]

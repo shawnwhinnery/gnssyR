@@ -1,3 +1,4 @@
+pub mod main_menu;
 pub mod sandbox;
 
 use input::InputEvent;
@@ -28,4 +29,7 @@ pub enum SceneTransition {
 pub trait Scene {
     fn tick(&mut self, events: &[InputEvent]) -> Option<SceneTransition>;
     fn draw(&self, driver: &mut dyn gfx::GraphicsDriver);
+    /// Draw the egui UI overlay for this scene. Called once per frame after
+    /// [`draw`], inside an active egui pass. Default implementation is a no-op.
+    fn draw_ui(&self, _ctx: &egui::Context) {}
 }

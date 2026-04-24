@@ -16,6 +16,7 @@ See [crates/index.md](crates/index.md) for a one-line summary of every crate.
 | Physics | `physics` (pure-math 2D rigid-body simulation, SAT narrowphase, impulse-based resolution) |
 | App loop | `window` |
 | Game logic | `game` (placeholder) |
+| UI | egui 0.29 (immediate-mode, rendered by `gfx-wgpu` on top of game content) |
 
 ## Workflow
 
@@ -30,6 +31,39 @@ See [crates/index.md](crates/index.md) for a one-line summary of every crate.
 - Mesh handles are **frame-scoped**: do not cache across `begin_frame` boundaries.
 - Axis deadzone is 0.1 (clamped to 0.0 in `GilrsBackend`).
 - Keyboard/mouse always maps to P1; gamepads fill P1–P4 in connection order.
+
+## Scene Management
+
+All live game state lives in a single `Box<dyn game::scenes::Scene>` owned by the main loop. Scenes drive themselves through three methods:
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `tick` | `(&mut self, events) -> Option<SceneTransition>` | Advance simulation one logical step |
+| `draw` | `(&self, driver)` | Render gfx content |
+| `draw_ui` | `(&self, ctx)` | Render egui overlay (default no-op) |
+
+`SceneTransition::Replace(Box<dyn Scene>)` swaps the active scene (dropping the old one via RAII); `SceneTransition::Quit` signals exit. `main.rs` processes the returned transition between tick and render each frame.
+
+See `crates/game/src/scenes/mod.rs` and `crates/game/CLAUDE.md` for conventions and the `PauseState` composition pattern.
+
+## UI (egui)
+
+The game uses [egui](https://github.com/emilk/egui) for all in-game UI (pause menus, overlays, debug panels, etc.).
+
+**Integration points:**
+- `window::EguiRenderer` trait — implemented by `WgpuDriver`; called by `App::run_with_ui` each frame to pass tessellated UI to the GPU driver
+- `App::run_with_ui` — opt-in variant of `App::run`; manages `egui_winit::State` and the egui frame lifecycle; use this in `main.rs` instead of `App::run`
+- `WgpuDriver` — owns `egui_wgpu::Renderer`; renders egui on top of game content in `end_frame` using `LoadOp::Load`
+
+**Scene convention:**
+- `Scene::draw_ui(&self, ctx: &egui::Context)` — override this in scenes that need UI; default is a no-op
+- `draw_ui` is called from the render closure in `main.rs` after `scene.draw(driver)`
+- `egui::Context` is `Arc`-based; clone it into the render closure at startup
+
+**Key constraints:**
+- `GraphicsDriver` trait has no egui coupling — `gfx` and `gfx-software` are egui-free
+- `SoftwareDriver` (used in headless tests) does not implement `EguiRenderer`; tests run via `App::run_frames`, which has no egui path
+- egui input events are consumed before game input in `WinitAppEgui::window_event`; game input is skipped when egui reports `consumed`
 
 ## Scene Snapshot Tests
 

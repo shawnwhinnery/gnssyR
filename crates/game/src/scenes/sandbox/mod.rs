@@ -35,6 +35,9 @@ impl Scene for SandboxScene {
 
     fn draw(&self, driver: &mut dyn gfx::GraphicsDriver) {
         self.world.draw(driver);
-        self.pause.draw(driver);
+    }
+
+    fn draw_ui(&self, ctx: &egui::Context) {
+        self.pause.draw_ui(ctx);
     }
 }
