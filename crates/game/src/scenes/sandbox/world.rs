@@ -9,7 +9,7 @@ use crate::{
     player::{draw_players, Player, PLAYER_SPEED},
 };
 use gfx::{
-    shape::{circle, line, polygon},
+    shape::{circle, polygon},
     style::{Fill, LineCap, LineJoin, Stroke, Style},
     tessellate, Color,
 };
@@ -94,8 +94,6 @@ fn make_walls(physics: &mut PhysicsWorld) -> Vec<Wall> {
     walls
 }
 
-const TILE_SIZE: f32 = 0.1;
-
 pub struct World {
     pub physics: PhysicsWorld,
     pub players: Vec<Player>,
@@ -163,13 +161,23 @@ impl World {
             self.physics.body_mut(player.body).velocity = intent.move_dir * PLAYER_SPEED;
         }
         self.physics.step(dt);
+
+        let live_positions: Vec<Vec2> = self
+            .players
+            .iter()
+            .filter(|p| p.health > 0.0)
+            .map(|p| self.physics.body(p.body).position)
+            .collect();
+        if !live_positions.is_empty() {
+            let avg = live_positions.iter().copied().sum::<Vec2>() / live_positions.len() as f32;
+            self.camera.update(avg, dt);
+        }
     }
 
     pub fn draw(&self, driver: &mut dyn gfx::GraphicsDriver) {
         let backend = driver.backend_name();
         let _elapsed = self.start.elapsed().as_secs_f32();
         driver.clear(GROUND_COLOR);
-        draw_grid(driver, &self.camera);
         draw_walls(&self.walls, &self.physics, driver, &self.camera);
         draw_players(&self.players, &self.physics, driver, &self.camera);
 
@@ -235,27 +243,6 @@ fn draw_walls(
     }
 }
 
-fn draw_grid(driver: &mut dyn gfx::GraphicsDriver, camera: &Camera) {
-    let grid_style = Style::stroked(Stroke::solid(Color::hex(0x000000FF), 0.003));
-    let first = (-camera.half_view / TILE_SIZE).floor() as i32;
-    let last = (camera.half_view / TILE_SIZE).ceil() as i32;
-
-    for i in first..=last {
-        let coord = camera.scale(i as f32 * TILE_SIZE);
-        draw_shape(
-            driver,
-            &line(Vec2::new(coord, -1.0), Vec2::new(coord, 1.0)),
-            &grid_style,
-            Mat3::IDENTITY,
-        );
-        draw_shape(
-            driver,
-            &line(Vec2::new(-1.0, coord), Vec2::new(1.0, coord)),
-            &grid_style,
-            Mat3::IDENTITY,
-        );
-    }
-}
 
 fn draw_shape(
     driver: &mut dyn gfx::GraphicsDriver,
@@ -380,5 +367,27 @@ mod tests {
         driver.begin_frame();
         world.draw(&mut driver);
         driver.end_frame();
+    }
+
+    #[test]
+    fn world_camera_follows_avg() {
+        use crate::player::Player;
+
+        let mut world = World::new();
+        // Two players at (-4, 0) and (4, 0) — average is origin.
+        world.physics.body_mut(world.players[0].body).position = Vec2::new(-4.0, 0.0);
+        world.players.push(Player::new(1, Vec2::new(4.0, 0.0), &mut world.physics));
+        // Pre-offset the camera so we can observe it converging toward origin.
+        world.camera.position = Vec2::new(0.0, 10.0);
+
+        for _ in 0..100 {
+            world.tick(&[]);
+        }
+
+        assert!(
+            world.camera.position.y < 10.0,
+            "camera did not move toward avg: y = {}",
+            world.camera.position.y
+        );
     }
 }
