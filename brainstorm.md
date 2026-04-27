@@ -40,6 +40,11 @@ Key insight from successful games: give players **something to hunt** that is bo
 ---
 
 ## Progression Systems
+Mobs drop scraps of differnt colors (elements)
+At the end of each rounds scraps are collected
+When enough scraps have been collected, a modifier part is produced
+A modifier's effects are random but influinced by the scraps used to create it
+Players play multiple runs looking for elite weapons and elite mobs
 
 ### Weapon and Combat Modifiers
 
