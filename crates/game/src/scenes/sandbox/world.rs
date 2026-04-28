@@ -7,6 +7,7 @@ use crate::{
     hud,
     input::InputState,
     player::{draw_players, Player, PLAYER_SPEED},
+    weapon::Projectile,
 };
 use gfx::{
     shape::{circle, polygon},
@@ -15,6 +16,9 @@ use gfx::{
 };
 
 pub(super) const GROUND_COLOR: [f32; 4] = [0.13, 0.14, 0.12, 1.0];
+
+/// Projectiles spawn this many world units in front of the player's edge.
+const PLAYER_RADIUS_SPAWN_OFFSET: f32 = crate::player::PLAYER_RADIUS + 0.05;
 
 // ---------------------------------------------------------------------------
 // Walls
@@ -98,6 +102,7 @@ pub struct World {
     pub physics: PhysicsWorld,
     pub players: Vec<Player>,
     pub walls: Vec<Wall>,
+    pub projectiles: Vec<Projectile>,
     pub camera: Camera,
     start: std::time::Instant,
     last_tick: std::time::Instant,
@@ -113,6 +118,7 @@ impl World {
             physics: PhysicsWorld::new(),
             players: Vec::new(),
             walls: Vec::new(),
+            projectiles: Vec::new(),
             camera: Camera::default(),
             start: now,
             last_tick: now,
@@ -141,6 +147,10 @@ impl World {
 
         self.input_state.apply_events(events, self.cursor_ndc);
         let snapshot = self.input_state.snapshot();
+
+        // Collect per-player spawn requests before mutably borrowing physics.
+        let mut spawn_requests: Vec<(usize, Vec2, Vec<Vec2>)> = Vec::new();
+
         for player in &mut self.players {
             let intent = snapshot.player(player.slot);
             let aim_dir = if player.slot == 0 && !intent.aim_from_stick {
@@ -159,7 +169,44 @@ impl World {
                 player.facing = aim_dir;
             }
             self.physics.body_mut(player.body).velocity = intent.move_dir * PLAYER_SPEED;
+
+            let volleys = player.weapon.tick(dt, intent.fire);
+            if volleys > 0 {
+                let player_pos = self.physics.body(player.body).position;
+                let dirs = player.weapon.volley_directions(player.facing);
+                spawn_requests.push((player.slot, player_pos, dirs));
+
+                // Apply recoil to the player body.
+                let recoil = -player.facing * player.weapon.stats.recoil_force;
+                self.physics.body_mut(player.body).velocity += recoil;
+            }
         }
+
+        for (owner_slot, origin, dirs) in spawn_requests {
+            let stats = &self.players[owner_slot].weapon.stats;
+            let speed = stats.projectile_speed;
+            let size = stats.projectile_size;
+            let lifetime = stats.projectile_lifetime;
+            let piercing = stats.piercing;
+
+            for dir in dirs {
+                let handle = self.physics.add_body(Body {
+                    position: origin + dir * (PLAYER_RADIUS_SPAWN_OFFSET + size),
+                    velocity: dir * speed,
+                    mass: 0.01,
+                    restitution: 0.0,
+                    collider: Collider::Circle { radius: size },
+                });
+                self.projectiles.push(Projectile {
+                    body: handle,
+                    owner_slot,
+                    lifetime,
+                    piercing,
+                    size,
+                });
+            }
+        }
+
         self.physics.step(dt);
 
         let live_positions: Vec<Vec2> = self
@@ -172,6 +219,8 @@ impl World {
             let avg = live_positions.iter().copied().sum::<Vec2>() / live_positions.len() as f32;
             self.camera.update(avg, dt);
         }
+        tick_projectiles(&mut self.projectiles, dt);
+        cleanup_projectiles(&mut self.projectiles, &mut self.physics, &self.walls);
     }
 
     pub fn draw(&self, driver: &mut dyn gfx::GraphicsDriver) {
@@ -180,6 +229,7 @@ impl World {
         driver.clear(GROUND_COLOR);
         draw_walls(&self.walls, &self.physics, driver, &self.camera);
         draw_players(&self.players, &self.physics, driver, &self.camera);
+        draw_projectiles(&self.projectiles, &self.physics, driver, &self.camera);
 
         // Collision HUD: collect which walls the player is touching.
         let contacts = self.physics.contacts();
@@ -207,6 +257,24 @@ impl World {
 impl Default for World {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn draw_projectiles(
+    projectiles: &[Projectile],
+    physics: &PhysicsWorld,
+    driver: &mut dyn gfx::GraphicsDriver,
+    camera: &Camera,
+) {
+    let style = Style {
+        fill: Some(Fill::Solid(Color::hex(0xFFFFFFFF))),
+        stroke: None,
+    };
+    for proj in projectiles {
+        let pos = physics.body(proj.body).position;
+        let ndc = camera.world_to_ndc(pos);
+        let r = camera.scale(proj.size);
+        draw_shape(driver, &circle(ndc, r), &style, Mat3::IDENTITY);
     }
 }
 
@@ -243,6 +311,59 @@ fn draw_walls(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Projectile lifecycle
+// ---------------------------------------------------------------------------
+
+fn tick_projectiles(projectiles: &mut Vec<Projectile>, dt: f32) {
+    for p in projectiles.iter_mut() {
+        p.lifetime -= dt;
+    }
+}
+
+fn cleanup_projectiles(
+    projectiles: &mut Vec<Projectile>,
+    physics: &mut PhysicsWorld,
+    walls: &[Wall],
+) {
+    let wall_handles: std::collections::HashSet<BodyHandle> =
+        walls.iter().map(|w| w.body).collect();
+
+    let contacts = physics.contacts().to_vec();
+
+    let mut to_remove: Vec<usize> = Vec::new();
+    for (idx, proj) in projectiles.iter_mut().enumerate() {
+        if proj.lifetime <= 0.0 {
+            to_remove.push(idx);
+            continue;
+        }
+
+        // Check if this projectile hit a wall.
+        let hit_wall = contacts.iter().any(|(a, b, _)| {
+            let involves_proj =
+                *a == proj.body || *b == proj.body;
+            let involves_wall =
+                wall_handles.contains(a) || wall_handles.contains(b);
+            involves_proj && involves_wall
+        });
+
+        if hit_wall {
+            if proj.piercing == 0 {
+                to_remove.push(idx);
+            } else {
+                proj.piercing -= 1;
+            }
+        }
+    }
+
+    // Remove in reverse index order to keep indices valid.
+    to_remove.sort_unstable();
+    to_remove.dedup();
+    for idx in to_remove.into_iter().rev() {
+        let removed = projectiles.swap_remove(idx);
+        physics.remove_body(removed.body);
+    }
+}
 
 fn draw_shape(
     driver: &mut dyn gfx::GraphicsDriver,

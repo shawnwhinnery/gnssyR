@@ -1,7 +1,10 @@
 use glam::{Mat3, Vec2};
 use physics::{Body, BodyHandle, Collider, PhysicsWorld};
 
-use crate::camera::Camera;
+use crate::{
+    camera::Camera,
+    weapon::{Weapon, WeaponStats},
+};
 use gfx::{
     shape::{circle, line},
     style::{Fill, LineCap, LineJoin, Stroke, Style},
@@ -18,6 +21,7 @@ pub struct Player {
     pub facing: Vec2,
     pub health: f32,
     pub color: Color,
+    pub weapon: Weapon,
 }
 
 impl Player {
@@ -37,6 +41,7 @@ impl Player {
             facing: Vec2::X,
             health: 100.0,
             color: Color::hex(PLAYER_COLORS[slot.min(PLAYER_COLORS.len() - 1)]),
+            weapon: Weapon::new(WeaponStats::default()),
         }
     }
 }
