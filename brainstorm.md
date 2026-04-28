@@ -46,6 +46,11 @@ When enough scraps have been collected, a modifier part is produced
 A modifier's effects are random but influinced by the scraps used to create it
 Players play multiple runs looking for elite weapons and elite mobs
 
+Going through a run players pick up scraps (like animals in sonic)
+at the end of each run those scraps all go into a single store
+over multiple runs the store becoms full and a weapon mod part (like crystals in Nightreign) comes out
+the moddifiers that the part provides is influinced by the scraps that go into making it
+
 ### Weapon and Combat Modifiers
 
 Brainstorming stats and modifiers:
