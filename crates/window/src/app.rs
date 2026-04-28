@@ -4,7 +4,7 @@ use input::backend::InputBackend;
 use input::event::{Button, InputEvent};
 use input::player::PlayerId;
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
@@ -185,6 +185,7 @@ fn translate_key(key: PhysicalKey) -> Option<Button> {
         KeyCode::KeyS | KeyCode::ArrowDown => Button::DPadDown,
         KeyCode::KeyA | KeyCode::ArrowLeft => Button::DPadLeft,
         KeyCode::KeyD | KeyCode::ArrowRight => Button::DPadRight,
+        KeyCode::Space => Button::South,
         KeyCode::Escape => Button::Key(input::event::KeyCode::Escape),
         _ => return None,
     })
@@ -261,6 +262,13 @@ where
                         pressed,
                     });
                 }
+            }
+            WindowEvent::MouseInput { button: MouseButton::Left, state, .. } => {
+                self.pending_keys.push(InputEvent::Button {
+                    player: PlayerId::P1,
+                    button: Button::South,
+                    pressed: state == ElementState::Pressed,
+                });
             }
             WindowEvent::RedrawRequested => {
                 if let Some(driver) = self.driver.as_mut() {
@@ -393,6 +401,13 @@ where
                         pressed,
                     });
                 }
+            }
+            WindowEvent::MouseInput { button: MouseButton::Left, state, .. } => {
+                self.pending_keys.push(InputEvent::Button {
+                    player: PlayerId::P1,
+                    button: Button::South,
+                    pressed: state == ElementState::Pressed,
+                });
             }
             WindowEvent::RedrawRequested => {
                 if let (Some(driver), Some(egui_winit), Some(window)) = (
