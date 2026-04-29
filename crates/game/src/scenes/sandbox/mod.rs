@@ -2,6 +2,7 @@ mod world;
 
 use std::cell::{Cell, RefCell};
 
+use glam::Vec2;
 use input::InputEvent;
 
 use crate::{
@@ -17,6 +18,8 @@ pub struct SandboxScene {
     pause: PauseState,
     stats_editor: RefCell<WeaponStats>,
     slow_motion: Cell<bool>,
+    enemy_spawn_requests: Cell<u32>,
+    player_respawn_requested: Cell<bool>,
 }
 
 impl SandboxScene {
@@ -26,6 +29,8 @@ impl SandboxScene {
             pause: PauseState::new(),
             stats_editor: RefCell::new(WeaponStats::default()),
             slow_motion: Cell::new(false),
+            enemy_spawn_requests: Cell::new(0),
+            player_respawn_requested: Cell::new(false),
         }
     }
 }
@@ -43,6 +48,23 @@ impl Scene for SandboxScene {
         if let Some(player) = self.world.players.first_mut() {
             player.weapon.stats = self.stats_editor.borrow().clone();
         }
+
+        if self.player_respawn_requested.get() {
+            self.player_respawn_requested.set(false);
+            self.world.respawn_player(0);
+        }
+
+        let n = self.enemy_spawn_requests.get();
+        if n > 0 {
+            self.enemy_spawn_requests.set(0);
+            let angle_step = std::f32::consts::TAU / n as f32;
+            for i in 0..n {
+                let angle = angle_step * i as f32;
+                let pos = Vec2::new(angle.cos(), angle.sin()) * 4.0;
+                self.world.spawn_enemy(pos);
+            }
+        }
+
         if !self.pause.is_paused() {
             self.world.tick(events);
         }
@@ -59,6 +81,42 @@ impl Scene for SandboxScene {
         if self.pause.is_paused() {
             return;
         }
+
+        // ── Enemies panel ──────────────────────────────────────────────────────
+        let alive = self.world.alive_enemy_count();
+        let player_dead = self.world.player_health(0).map_or(false, |h| h <= 0.0);
+
+        egui::Window::new("Enemies")
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-12.0, -12.0))
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.set_min_width(160.0);
+
+                ui.label(format!("{alive} enemy alive"));
+
+                ui.separator();
+
+                if ui
+                    .add_sized([ui.available_width(), 24.0], egui::Button::new("Spawn Dummy"))
+                    .clicked()
+                {
+                    self.enemy_spawn_requests.set(self.enemy_spawn_requests.get() + 1);
+                }
+
+                let respawn_btn = egui::Button::new("Respawn P1");
+                let respawn_btn = if player_dead {
+                    respawn_btn.fill(egui::Color32::from_rgb(180, 60, 60))
+                } else {
+                    respawn_btn
+                };
+                if ui
+                    .add_sized([ui.available_width(), 24.0], respawn_btn)
+                    .clicked()
+                {
+                    self.player_respawn_requested.set(true);
+                }
+            });
 
         // Extract state display info as owned values so no long-lived borrow of self.world
         // is held across the egui closure.

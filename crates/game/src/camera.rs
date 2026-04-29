@@ -1,6 +1,6 @@
 use glam::Vec2;
 
-pub const HALF_VIEW: f32 = 5.0;
+pub const HALF_VIEW: f32 = 5.6;
 
 pub struct Camera {
     pub half_view: f32,

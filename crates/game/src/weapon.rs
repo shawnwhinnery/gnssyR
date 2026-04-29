@@ -209,16 +209,23 @@ impl Weapon {
 // Projectile
 // ---------------------------------------------------------------------------
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ProjectileOwner {
+    Player(usize),
+    Enemy,
+}
+
 pub struct Projectile {
     pub body: BodyHandle,
-    /// Slot index of the player who fired this projectile (used for collision filtering).
-    pub owner_slot: usize,
+    pub owner: ProjectileOwner,
     /// Remaining seconds before the projectile despawns due to age.
     pub lifetime: f32,
     /// Remaining wall hits before despawn (0 = despawn on first hit).
     pub piercing: u32,
     /// Visual/collision radius (world units), mirroring the physics body.
     pub size: f32,
+    /// Flat damage applied on hit (from WeaponStats::damage_total).
+    pub damage: f32,
 }
 
 // ---------------------------------------------------------------------------

@@ -16,7 +16,16 @@
       "Bash(xargs ls:*)",
       "Bash(git -C /Users/shawnwhinnery/Projects/gnssyR log --oneline crates/game/tests/snapshots/gfx_scene.bin)",
       "Bash(git stash:*)",
-      "Bash(UPDATE_SNAPSHOTS=1 cargo test -p game --test integration)"
+      "Bash(UPDATE_SNAPSHOTS=1 cargo test -p game --test integration)",
+      "Bash(git checkout *)",
+      "Bash(git -C /var/home/bazzite/.worklife/repos/gnssyr/main status)",
+      "Bash(git -C /var/home/bazzite/.worklife/repos/gnssyr/main diff GAME_ARCHITECTURE.md)",
+      "Bash(git -C /var/home/bazzite/.worklife/repos/gnssyr/main log --oneline -5)",
+      "Bash(git check-ignore *)",
+      "Bash(git -C /var/home/bazzite/.worklife/repos/gnssyr/main add GAME_ARCHITECTURE.md)",
+      "Bash(git -C /var/home/bazzite/.worklife/repos/gnssyr/main commit -m ' *)",
+      "Bash(git -C /var/home/bazzite/.worklife/repos/gnssyr/main push)",
+      "Bash(git add *)"
     ]
   }
 }
