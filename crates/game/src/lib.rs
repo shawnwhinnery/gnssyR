@@ -6,6 +6,7 @@ pub mod mode;
 pub mod pause;
 pub mod player;
 pub mod scenes;
+pub mod scrap;
 pub mod weapon;
 
 pub use mode::GameMode;

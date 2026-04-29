@@ -11,7 +11,7 @@ use gfx::{
     tessellate, Color,
 };
 
-use super::Enemy;
+use super::{Enemy, LootTable};
 
 pub const DUMMY_RADIUS: f32 = 0.45;
 const DUMMY_SPEED: f32 = 2.5;
@@ -71,6 +71,10 @@ impl Enemy for Dummy {
 
     fn weapon_stats(&self) -> &WeaponStats {
         &self.weapon.stats
+    }
+
+    fn loot_table(&self) -> LootTable {
+        LootTable { min_drops: 1, max_drops: 3 }
     }
 
     fn tick_ai(

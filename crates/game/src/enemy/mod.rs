@@ -5,6 +5,12 @@ use physics::{BodyHandle, PhysicsWorld};
 
 use crate::{camera::Camera, weapon::WeaponStats};
 
+#[derive(Debug, Clone, Copy)]
+pub struct LootTable {
+    pub min_drops: u32,
+    pub max_drops: u32,
+}
+
 pub trait Enemy {
     fn body(&self) -> BodyHandle;
     fn health(&self) -> f32;
@@ -25,6 +31,8 @@ pub trait Enemy {
     ) -> Vec<(Vec2, Vec<Vec2>)>;
 
     fn weapon_stats(&self) -> &WeaponStats;
+
+    fn loot_table(&self) -> LootTable;
 
     fn draw(
         &self,

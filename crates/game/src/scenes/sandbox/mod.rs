@@ -7,6 +7,7 @@ use input::InputEvent;
 
 use crate::{
     pause::PauseState,
+    scrap::{ScrapColor, ScrapShape},
     weapon::{WeaponFiringState, WeaponStats},
 };
 use world::World;
@@ -81,6 +82,58 @@ impl Scene for SandboxScene {
         if self.pause.is_paused() {
             return;
         }
+
+        // ── Inventory panel ───────────────────────────────────────────────────
+        let inv = &self.world.inventory;
+        egui::Window::new("Inventory")
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-12.0, 12.0))
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                const SHAPES: [(&str, ScrapShape); 4] = [
+                    ("◆", ScrapShape::Diamond),
+                    ("●", ScrapShape::Circle),
+                    ("■", ScrapShape::Square),
+                    ("▲", ScrapShape::Triangle),
+                ];
+                const COLORS: [(ScrapColor, &str, egui::Color32); 8] = [
+                    (ScrapColor::Red,    "Red",    egui::Color32::from_rgb(230, 38,  38)),
+                    (ScrapColor::Orange, "Orange", egui::Color32::from_rgb(242, 127, 25)),
+                    (ScrapColor::Yellow, "Yellow", egui::Color32::from_rgb(220, 210, 25)),
+                    (ScrapColor::Green,  "Green",  egui::Color32::from_rgb(25,  200, 51)),
+                    (ScrapColor::Cyan,   "Cyan",   egui::Color32::from_rgb(25,  200, 220)),
+                    (ScrapColor::Blue,   "Blue",   egui::Color32::from_rgb(38,  76,  240)),
+                    (ScrapColor::Purple, "Purple", egui::Color32::from_rgb(165, 25,  230)),
+                    (ScrapColor::Pink,   "Pink",   egui::Color32::from_rgb(240, 89,  190)),
+                ];
+
+                egui::Grid::new("inv_grid")
+                    .num_columns(5)
+                    .spacing([6.0, 2.0])
+                    .show(ui, |ui| {
+                        // Header row: blank label cell + one symbol per shape
+                        ui.label("");
+                        for (sym, _) in SHAPES {
+                            ui.label(egui::RichText::new(sym).strong());
+                        }
+                        ui.end_row();
+
+                        // One row per color
+                        for (color, name, egui_color) in COLORS {
+                            ui.colored_label(egui_color, name);
+                            for (_, shape) in SHAPES {
+                                let n = inv.count(color, shape);
+                                let text = egui::RichText::new(n.to_string())
+                                    .color(if n > 0 { egui::Color32::WHITE } else { egui::Color32::DARK_GRAY });
+                                ui.label(text);
+                            }
+                            ui.end_row();
+                        }
+                    });
+
+                ui.separator();
+                ui.label(format!("Total: {}", inv.total()));
+            });
 
         // ── Enemies panel ──────────────────────────────────────────────────────
         let alive = self.world.alive_enemy_count();

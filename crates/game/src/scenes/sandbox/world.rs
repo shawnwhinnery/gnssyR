@@ -2,12 +2,15 @@ use glam::{Mat3, Vec2};
 use input::InputEvent;
 use physics::{Body, BodyHandle, Collider, Contact, PhysicsWorld};
 
+use rand::Rng;
+
 use crate::{
     camera::Camera,
-    enemy::{dummy::Dummy, Enemy},
+    enemy::{dummy::Dummy, Enemy, LootTable},
     hud,
     input::InputState,
     player::{draw_players, Player, PLAYER_RADIUS},
+    scrap::{draw_scrap, Inventory, Scrap, ScrapColor, ScrapShape},
     weapon::{Projectile, ProjectileOwner},
 };
 use gfx::{
@@ -105,6 +108,8 @@ pub struct World {
     pub enemies: Vec<Box<dyn Enemy>>,
     pub walls: Vec<Wall>,
     pub projectiles: Vec<Projectile>,
+    pub scraps: Vec<Scrap>,
+    pub inventory: Inventory,
     pub camera: Camera,
     start: std::time::Instant,
     last_tick: std::time::Instant,
@@ -123,6 +128,8 @@ impl World {
             enemies: Vec::new(),
             walls: Vec::new(),
             projectiles: Vec::new(),
+            scraps: Vec::new(),
+            inventory: Inventory::new(),
             camera: Camera::default(),
             start: now,
             last_tick: now,
@@ -303,7 +310,9 @@ impl World {
             &mut self.enemies,
         );
 
-        cleanup_dead_enemies(&mut self.enemies, &mut self.physics);
+        let death_loot = cleanup_dead_enemies(&mut self.enemies, &mut self.physics);
+        spawn_scraps(&mut self.scraps, death_loot);
+        collect_scraps(&mut self.scraps, &mut self.inventory, &self.players, &self.physics);
         cleanup_projectiles(&mut self.projectiles, &mut self.physics, &self.walls, &enemy_bodies);
     }
 
@@ -312,6 +321,9 @@ impl World {
         let _elapsed = self.start.elapsed().as_secs_f32();
         driver.clear(GROUND_COLOR);
         draw_walls(&self.walls, &self.physics, driver, &self.camera);
+        for scrap in &self.scraps {
+            draw_scrap(scrap, driver, &self.camera);
+        }
         draw_players(&self.players, &self.physics, driver, &self.camera);
         for player in &self.players {
             draw_spread_cone(player, &self.physics, driver, &self.camera);
@@ -410,13 +422,62 @@ fn resolve_damage(
 // Dead enemy cleanup
 // ---------------------------------------------------------------------------
 
-fn cleanup_dead_enemies(enemies: &mut Vec<Box<dyn Enemy>>, physics: &mut PhysicsWorld) {
+fn cleanup_dead_enemies(
+    enemies: &mut Vec<Box<dyn Enemy>>,
+    physics: &mut PhysicsWorld,
+) -> Vec<(Vec2, LootTable)> {
+    let mut loot = Vec::new();
     let mut i = 0;
     while i < enemies.len() {
         if !enemies[i].is_alive() {
             let body = enemies[i].body();
+            let pos = physics.body(body).position;
+            loot.push((pos, enemies[i].loot_table()));
             physics.remove_body(body);
             enemies.swap_remove(i);
+        } else {
+            i += 1;
+        }
+    }
+    loot
+}
+
+fn spawn_scraps(scraps: &mut Vec<Scrap>, death_loot: Vec<(Vec2, LootTable)>) {
+    use rand::seq::SliceRandom;
+    let mut rng = rand::thread_rng();
+
+    for (pos, table) in death_loot {
+        let count = rng.gen_range(table.min_drops..=table.max_drops);
+        for _ in 0..count {
+            let color = *ScrapColor::ALL.choose(&mut rng).unwrap();
+            let shape = *ScrapShape::ALL.choose(&mut rng).unwrap();
+            let offset = Vec2::new(rng.gen_range(-0.3..=0.3), rng.gen_range(-0.3..=0.3));
+            scraps.push(Scrap { position: pos + offset, color, shape });
+        }
+    }
+}
+
+fn collect_scraps(
+    scraps: &mut Vec<Scrap>,
+    inventory: &mut Inventory,
+    players: &[Player],
+    physics: &PhysicsWorld,
+) {
+    const COLLECT_RADIUS: f32 = PLAYER_RADIUS + 0.18;
+    let player_positions: Vec<Vec2> = players
+        .iter()
+        .filter(|p| p.health > 0.0)
+        .map(|p| physics.body(p.body).position)
+        .collect();
+
+    let mut i = 0;
+    while i < scraps.len() {
+        let collected = player_positions
+            .iter()
+            .any(|&pp| pp.distance(scraps[i].position) < COLLECT_RADIUS);
+        if collected {
+            let s = scraps.swap_remove(i);
+            inventory.add(s.color, s.shape);
         } else {
             i += 1;
         }
