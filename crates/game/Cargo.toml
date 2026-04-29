@@ -19,6 +19,7 @@ input        = { workspace = true }
 physics      = { workspace = true }
 window       = { workspace = true }
 egui         = { workspace = true }
+rand         = "0.8"
 
 [features]
 default = ["gilrs"]

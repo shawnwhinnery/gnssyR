@@ -1,10 +1,12 @@
 use glam::Vec2;
 use physics::BodyHandle;
+use rand::Rng as _;
 
 // ---------------------------------------------------------------------------
 // Stats
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct WeaponStats {
     /// Rounds per second (governs the cooldown between firing cycles).
     pub fire_rate: f32,
@@ -178,8 +180,18 @@ impl Weapon {
         if n == 0 {
             return vec![];
         }
+        let mut rng = rand::thread_rng();
+
+        let mut jitter = || -> f32 {
+            if self.stats.jitter > 0.0 {
+                rng.gen_range(-self.stats.jitter..self.stats.jitter)
+            } else {
+                0.0
+            }
+        };
+
         if n == 1 || self.stats.shot_arc == 0.0 {
-            return vec![facing];
+            return vec![rotate(facing, jitter())];
         }
 
         let half = self.stats.shot_arc / 2.0;
@@ -187,7 +199,7 @@ impl Weapon {
         (0..n)
             .map(|i| {
                 let angle = -half + step * i as f32;
-                rotate(facing, angle)
+                rotate(facing, angle + jitter())
             })
             .collect()
     }

@@ -10,7 +10,7 @@ use crate::{
     weapon::Projectile,
 };
 use gfx::{
-    shape::{circle, polygon},
+    shape::{circle, line, polygon},
     style::{Fill, LineCap, LineJoin, Stroke, Style},
     tessellate, Color,
 };
@@ -109,6 +109,7 @@ pub struct World {
     pub fps: f32,
     pub cursor_ndc: Vec2,
     input_state: InputState,
+    pub time_scale: f32,
 }
 
 impl World {
@@ -125,6 +126,7 @@ impl World {
             fps: 0.0,
             cursor_ndc: Vec2::ZERO,
             input_state: InputState::default(),
+            time_scale: 1.0,
         };
         world
             .players
@@ -135,9 +137,10 @@ impl World {
 
     pub fn tick(&mut self, events: &[InputEvent]) {
         let now = std::time::Instant::now();
-        let dt = now.duration_since(self.last_tick).as_secs_f32();
+        let real_dt = now.duration_since(self.last_tick).as_secs_f32();
         self.last_tick = now;
-        self.fps = self.fps * 0.9 + (1.0 / dt.max(1e-6)) * 0.1;
+        self.fps = self.fps * 0.9 + (1.0 / real_dt.max(1e-6)) * 0.1;
+        let dt = real_dt * self.time_scale;
 
         for event in events {
             if let InputEvent::CursorMoved { x, y } = event {
@@ -229,6 +232,9 @@ impl World {
         driver.clear(GROUND_COLOR);
         draw_walls(&self.walls, &self.physics, driver, &self.camera);
         draw_players(&self.players, &self.physics, driver, &self.camera);
+        for player in &self.players {
+            draw_spread_cone(player, &self.physics, driver, &self.camera);
+        }
         draw_projectiles(&self.projectiles, &self.physics, driver, &self.camera);
 
         // Collision HUD: collect which walls the player is touching.
@@ -258,6 +264,37 @@ impl Default for World {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn rotate_vec(v: Vec2, angle: f32) -> Vec2 {
+    let (sin, cos) = angle.sin_cos();
+    Vec2::new(v.x * cos - v.y * sin, v.x * sin + v.y * cos)
+}
+
+fn draw_spread_cone(
+    player: &Player,
+    physics: &PhysicsWorld,
+    driver: &mut dyn gfx::GraphicsDriver,
+    camera: &Camera,
+) {
+    let stats = &player.weapon.stats;
+    let half_angle = stats.shot_arc / 2.0 + stats.jitter;
+    if half_angle < 1e-4 {
+        return;
+    }
+    let pos = physics.body(player.body).position;
+    let range = (stats.projectile_speed * stats.projectile_lifetime).min(8.0);
+    let ndc_pos = camera.world_to_ndc(pos);
+    let style = Style::stroked(Stroke {
+        color: Color::hex(0xFFFFFF44),
+        width: 0.003,
+        cap: LineCap::Round,
+        join: LineJoin::Round,
+    });
+    let left_end = camera.world_to_ndc(pos + rotate_vec(player.facing, half_angle) * range);
+    let right_end = camera.world_to_ndc(pos + rotate_vec(player.facing, -half_angle) * range);
+    draw_shape(driver, &line(ndc_pos, left_end), &style, Mat3::IDENTITY);
+    draw_shape(driver, &line(ndc_pos, right_end), &style, Mat3::IDENTITY);
 }
 
 fn draw_projectiles(
