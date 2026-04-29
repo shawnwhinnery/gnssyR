@@ -28,22 +28,35 @@ unchanged. The sandbox scene is the validation target throughout.
 
 ```
 crates/game/src/
-  lib.rs           — re-exports (pub use world::World, etc.)
-  world.rs         — World struct; owns all arenas and PhysicsWorld
-  player.rs        — Player struct; tick_players / draw_players fns
-  input.rs         — InputSnapshot: per-player intent distilled from raw events
-  camera.rs        — Camera: world→NDC transform; HALF_VIEW constant lives here
-  sandbox.rs       — sandbox scene: wires World into draw_scene (unchanged API)
-  hud.rs           — unchanged
-  main.rs          — thin glue: constructs World, calls world.tick / draw_scene
+  lib.rs                        — module declarations; re-exports GameMode, PauseState
+  main.rs                       — thin glue: constructs the first scene, runs the egui app loop
+  mode.rs                       — GameMode enum (Playing / Paused); scene-agnostic
+  pause.rs                      — PauseState component; Escape-key toggle + egui pause overlay
+  camera.rs                     — Camera: world→NDC transform; HALF_VIEW constant lives here
+  input.rs                      — InputSnapshot: per-player intent distilled from raw events
+  player.rs                     — Player struct; tick_players / draw_players fns
+  weapon.rs                     — WeaponStats, Weapon, Projectile; fire / tick / draw fns
+  hud.rs                        — FPS / backend / mouse-pos HUD helpers
+  enemy/
+    mod.rs                      — Enemy trait (body, health, tick_ai, draw)
+    dummy.rs                    — DummyEnemy: stationary target that absorbs hits
+  scenes/
+    mod.rs                      — Scene trait + SceneTransition enum
+    sandbox/
+      mod.rs                    — SandboxScene: owns World + PauseState; weapon editor UI
+      world.rs                  — World struct; owns PhysicsWorld, players, enemies, projectiles
+    main_menu/
+      mod.rs                    — MainMenuScene: title screen with Play / Quit
+    level_select/
+      mod.rs                    — LevelSelectScene: stub level picker
 ```
 
 Future modules (not implemented now):
 
 ```
-  bullet.rs        — Bullet struct; spawn_bullet / tick_bullets / draw_bullets
-  pickup.rs        — Pickup struct; spawn_pickup / tick_pickups / draw_pickups
-  level.rs         — static level geometry loaded into PhysicsWorld as Mesh bodies
+  pickup.rs                     — Pickup struct; spawn_pickup / tick_pickups / draw_pickups
+  scenes/gameplay/              — full gameplay scene once sandbox graduates
+  level.rs                      — static level geometry loaded into PhysicsWorld as Mesh bodies
 ```
 
 ---
