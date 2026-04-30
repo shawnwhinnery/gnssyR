@@ -19,88 +19,23 @@ use gfx::{
     tessellate, Color,
 };
 
-pub(super) const GROUND_COLOR: [f32; 4] = [0.13, 0.14, 0.12, 1.0];
+pub const GROUND_COLOR: [f32; 4] = [0.13, 0.14, 0.12, 1.0];
 
-/// Projectiles spawn this many world units in front of the spawner's edge.
 const SPAWN_OFFSET: f32 = PLAYER_RADIUS + 0.05;
 
 // ---------------------------------------------------------------------------
-// Walls
+// Wall
 // ---------------------------------------------------------------------------
 
 pub struct Wall {
     pub body: BodyHandle,
-    /// Single-char label shown in the collision HUD (C=circle, R=rect, T=triangle, O=octagon).
     pub label: char,
     pub fill_color: Color,
 }
 
-fn make_walls(physics: &mut PhysicsWorld) -> Vec<Wall> {
-    let mut walls = Vec::new();
-
-    // Circle — right side.
-    let h = physics.add_body(Body {
-        position: Vec2::new(3.0, 0.0),
-        velocity: Vec2::ZERO,
-        mass: f32::INFINITY,
-        restitution: 0.3,
-        collider: Collider::Circle { radius: 0.65 },
-    });
-    walls.push(Wall { body: h, label: 'C', fill_color: Color::hex(0x7C4DFF99) });
-
-    // Rectangle — left side.
-    let h = physics.add_body(Body {
-        position: Vec2::new(-3.0, 0.0),
-        velocity: Vec2::ZERO,
-        mass: f32::INFINITY,
-        restitution: 0.3,
-        collider: Collider::Convex {
-            vertices: vec![
-                Vec2::new(-0.8, -0.5),
-                Vec2::new(0.8, -0.5),
-                Vec2::new(0.8, 0.5),
-                Vec2::new(-0.8, 0.5),
-            ],
-        },
-    });
-    walls.push(Wall { body: h, label: 'R', fill_color: Color::hex(0xFF6D0099) });
-
-    // Triangle — top side (equilateral, CCW, circumradius 0.75).
-    let r = 0.75_f32;
-    let h = physics.add_body(Body {
-        position: Vec2::new(0.0, 3.0),
-        velocity: Vec2::ZERO,
-        mass: f32::INFINITY,
-        restitution: 0.3,
-        collider: Collider::Convex {
-            vertices: vec![
-                Vec2::new(-r * 0.866, -r * 0.5), // bottom-left
-                Vec2::new(r * 0.866, -r * 0.5),  // bottom-right
-                Vec2::new(0.0, r),                // top
-            ],
-        },
-    });
-    walls.push(Wall { body: h, label: 'T', fill_color: Color::hex(0x00BFA599) });
-
-    // Octagon — bottom side (circumradius 0.75, CCW via increasing angle).
-    let r = 0.75_f32;
-    let oct_verts: Vec<Vec2> = (0..8)
-        .map(|i| {
-            let angle = std::f32::consts::TAU * i as f32 / 8.0;
-            Vec2::new(r * angle.cos(), r * angle.sin())
-        })
-        .collect();
-    let h = physics.add_body(Body {
-        position: Vec2::new(0.0, -3.0),
-        velocity: Vec2::ZERO,
-        mass: f32::INFINITY,
-        restitution: 0.3,
-        collider: Collider::Convex { vertices: oct_verts },
-    });
-    walls.push(Wall { body: h, label: 'O', fill_color: Color::hex(0xFFD60099) });
-
-    walls
-}
+// ---------------------------------------------------------------------------
+// World
+// ---------------------------------------------------------------------------
 
 pub struct World {
     pub physics: PhysicsWorld,
@@ -120,6 +55,8 @@ pub struct World {
 }
 
 impl World {
+    /// Create an empty world with one player at the origin and no walls.
+    /// Callers add walls via [`add_wall`](Self::add_wall).
     pub fn new() -> Self {
         let now = std::time::Instant::now();
         let mut world = Self {
@@ -139,8 +76,21 @@ impl World {
             time_scale: 1.0,
         };
         world.players.push(Player::new(0, Vec2::ZERO, &mut world.physics));
-        world.walls = make_walls(&mut world.physics);
         world
+    }
+
+    /// Register a physics body as a wall. Returns the body handle so callers
+    /// can store it for later removal (e.g. a door that opens).
+    pub fn add_wall(&mut self, body: Body, label: char, fill_color: Color) -> BodyHandle {
+        let handle = self.physics.add_body(body);
+        self.walls.push(Wall { body: handle, label, fill_color });
+        handle
+    }
+
+    /// Remove a wall body from both the physics world and the wall list.
+    pub fn remove_wall(&mut self, handle: BodyHandle) {
+        self.walls.retain(|w| w.body != handle);
+        self.physics.remove_body(handle);
     }
 
     pub fn spawn_enemy(&mut self, pos: Vec2) {
@@ -194,7 +144,8 @@ impl World {
             if aim_dir.length_squared() > 1e-6 {
                 player.facing = aim_dir;
             }
-            self.physics.body_mut(player.body).velocity = intent.move_dir * crate::player::PLAYER_SPEED;
+            self.physics.body_mut(player.body).velocity =
+                intent.move_dir * crate::player::PLAYER_SPEED;
 
             let volleys = player.weapon.tick(dt, intent.fire);
             if volleys > 0 {
@@ -294,13 +245,11 @@ impl World {
 
         tick_projectiles(&mut self.projectiles, dt);
 
-        // Build body-handle lookups for damage resolution.
         let player_bodies: Vec<(BodyHandle, usize)> =
             self.players.iter().map(|p| (p.body, p.slot)).collect();
         let enemy_bodies: Vec<BodyHandle> = self.enemies.iter().map(|e| e.body()).collect();
         let contacts = self.physics.contacts().to_vec();
 
-        // Apply damage before cleanup so hits aren't lost.
         resolve_damage(
             &self.projectiles,
             &player_bodies,
@@ -313,7 +262,15 @@ impl World {
         let death_loot = cleanup_dead_enemies(&mut self.enemies, &mut self.physics);
         spawn_scraps(&mut self.scraps, death_loot);
         collect_scraps(&mut self.scraps, &mut self.inventory, &self.players, &self.physics);
-        cleanup_projectiles(&mut self.projectiles, &mut self.physics, &self.walls, &enemy_bodies);
+        let player_body_handles: Vec<BodyHandle> =
+            self.players.iter().map(|p| p.body).collect();
+        cleanup_projectiles(
+            &mut self.projectiles,
+            &mut self.physics,
+            &self.walls,
+            &enemy_bodies,
+            &player_body_handles,
+        );
     }
 
     pub fn draw(&self, driver: &mut dyn gfx::GraphicsDriver) {
@@ -333,7 +290,6 @@ impl World {
         }
         draw_projectiles(&self.projectiles, &self.physics, driver, &self.camera);
 
-        // Collision HUD: collect which walls the player is touching.
         let contacts = self.physics.contacts();
         let player_body = self.players.first().map(|p| p.body);
         let wall_hits: Vec<(char, bool)> = self
@@ -385,13 +341,10 @@ fn resolve_damage(
     for proj in projectiles {
         match proj.owner {
             ProjectileOwner::Enemy => {
-                // Enemy projectile hitting a player.
                 for &(pb, slot) in player_bodies {
-                    let hit = contacts
-                        .iter()
-                        .any(|(a, b, _)| {
-                            (*a == proj.body && *b == pb) || (*b == proj.body && *a == pb)
-                        });
+                    let hit = contacts.iter().any(|(a, b, _)| {
+                        (*a == proj.body && *b == pb) || (*b == proj.body && *a == pb)
+                    });
                     if hit {
                         if let Some(player) = players.iter_mut().find(|p| p.slot == slot) {
                             player.health = (player.health - proj.damage).max(0.0);
@@ -400,13 +353,10 @@ fn resolve_damage(
                 }
             }
             ProjectileOwner::Player(_) => {
-                // Player projectile hitting an enemy.
                 for (i, &eb) in enemy_bodies.iter().enumerate() {
-                    let hit = contacts
-                        .iter()
-                        .any(|(a, b, _)| {
-                            (*a == proj.body && *b == eb) || (*b == proj.body && *a == eb)
-                        });
+                    let hit = contacts.iter().any(|(a, b, _)| {
+                        (*a == proj.body && *b == eb) || (*b == proj.body && *a == eb)
+                    });
                     if hit {
                         if let Some(enemy) = enemies.get_mut(i) {
                             enemy.take_damage(proj.damage);
@@ -545,7 +495,7 @@ fn draw_projectiles(
     }
 }
 
-fn draw_walls(
+pub fn draw_walls(
     walls: &[Wall],
     physics: &PhysicsWorld,
     driver: &mut dyn gfx::GraphicsDriver,
@@ -593,11 +543,14 @@ fn cleanup_projectiles(
     physics: &mut PhysicsWorld,
     walls: &[Wall],
     enemy_bodies: &[BodyHandle],
+    player_bodies: &[BodyHandle],
 ) {
     let wall_handles: std::collections::HashSet<BodyHandle> =
         walls.iter().map(|w| w.body).collect();
     let enemy_handle_set: std::collections::HashSet<BodyHandle> =
         enemy_bodies.iter().copied().collect();
+    let player_handle_set: std::collections::HashSet<BodyHandle> =
+        player_bodies.iter().copied().collect();
 
     let contacts = physics.contacts().to_vec();
 
@@ -623,17 +576,32 @@ fn cleanup_projectiles(
             continue;
         }
 
-        // Player projectiles despawn on enemy hit (non-piercing).
-        if matches!(proj.owner, ProjectileOwner::Player(_)) {
-            let hit_enemy = contacts.iter().any(|(a, b, _)| {
-                let involves_proj = *a == proj.body || *b == proj.body;
-                let involves_enemy = enemy_handle_set.contains(a) || enemy_handle_set.contains(b);
-                involves_proj && involves_enemy
-            });
-            if hit_enemy && proj.piercing == 0 {
-                to_remove.push(idx);
-            } else if hit_enemy {
-                proj.piercing -= 1;
+        match proj.owner {
+            ProjectileOwner::Player(_) => {
+                let hit_enemy = contacts.iter().any(|(a, b, _)| {
+                    let involves_proj = *a == proj.body || *b == proj.body;
+                    let involves_enemy =
+                        enemy_handle_set.contains(a) || enemy_handle_set.contains(b);
+                    involves_proj && involves_enemy
+                });
+                if hit_enemy && proj.piercing == 0 {
+                    to_remove.push(idx);
+                } else if hit_enemy {
+                    proj.piercing -= 1;
+                }
+            }
+            ProjectileOwner::Enemy => {
+                let hit_player = contacts.iter().any(|(a, b, _)| {
+                    let involves_proj = *a == proj.body || *b == proj.body;
+                    let involves_player =
+                        player_handle_set.contains(a) || player_handle_set.contains(b);
+                    involves_proj && involves_player
+                });
+                if hit_player && proj.piercing == 0 {
+                    to_remove.push(idx);
+                } else if hit_player {
+                    proj.piercing -= 1;
+                }
             }
         }
     }
@@ -646,7 +614,7 @@ fn cleanup_projectiles(
     }
 }
 
-fn draw_shape(
+pub fn draw_shape(
     driver: &mut dyn gfx::GraphicsDriver,
     path: &gfx::Path,
     style: &gfx::Style,
@@ -657,6 +625,10 @@ fn draw_shape(
         driver.draw_mesh(handle, transform, [1.0, 1.0, 1.0, 1.0]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -731,8 +703,7 @@ mod tests {
     }
 
     /// Regression: aim must point from the player's position to the cursor, not
-    /// from the screen centre. The player's NDC offset is (player_x / half_view, 0).
-    /// A cursor at NDC (0, 1) should produce facing relative to that offset, not Vec2::Y.
+    /// from the screen centre.
     #[test]
     fn cursor_aim_is_relative_to_player_position() {
         use crate::camera::HALF_VIEW;
@@ -740,7 +711,6 @@ mod tests {
         let player_x = 2.5_f32;
         world.physics.body_mut(world.players[0].body).position = Vec2::new(player_x, 0.0);
         world.tick(&[InputEvent::CursorMoved { x: 0.0, y: 1.0 }]);
-        // player NDC = (player_x / HALF_VIEW, 0.0); cursor NDC = (0.0, 1.0)
         let player_ndc_x = player_x / HALF_VIEW;
         let expected = Vec2::new(-player_ndc_x, 1.0).normalize();
         assert!(
@@ -779,10 +749,8 @@ mod tests {
         use crate::player::Player;
 
         let mut world = World::new();
-        // Two players at (-4, 0) and (4, 0) — average is origin.
         world.physics.body_mut(world.players[0].body).position = Vec2::new(-4.0, 0.0);
         world.players.push(Player::new(1, Vec2::new(4.0, 0.0), &mut world.physics));
-        // Pre-offset the camera so we can observe it converging toward origin.
         world.camera.position = Vec2::new(0.0, 10.0);
 
         for _ in 0..100 {
@@ -822,8 +790,43 @@ mod tests {
         world.spawn_enemy(Vec2::new(2.0, 0.0));
         world.enemies[0].take_damage(1000.0);
         assert!(!world.enemies[0].is_alive());
-        // Tick drives cleanup.
         world.tick(&[]);
         assert_eq!(world.enemies.len(), 0);
+    }
+
+    #[test]
+    fn add_wall_registers_in_walls_and_physics() {
+        let mut world = World::new();
+        assert_eq!(world.walls.len(), 0);
+        world.add_wall(
+            Body {
+                position: Vec2::new(3.0, 0.0),
+                velocity: Vec2::ZERO,
+                mass: f32::INFINITY,
+                restitution: 0.3,
+                collider: physics::Collider::Circle { radius: 0.5 },
+            },
+            'T',
+            Color::hex(0xFFFFFFFF),
+        );
+        assert_eq!(world.walls.len(), 1);
+    }
+
+    #[test]
+    fn remove_wall_clears_from_walls_and_physics() {
+        let mut world = World::new();
+        let h = world.add_wall(
+            Body {
+                position: Vec2::new(3.0, 0.0),
+                velocity: Vec2::ZERO,
+                mass: f32::INFINITY,
+                restitution: 0.3,
+                collider: physics::Collider::Circle { radius: 0.5 },
+            },
+            'T',
+            Color::hex(0xFFFFFFFF),
+        );
+        world.remove_wall(h);
+        assert_eq!(world.walls.len(), 0);
     }
 }

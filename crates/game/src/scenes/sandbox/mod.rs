@@ -1,16 +1,16 @@
-mod world;
-
 use std::cell::{Cell, RefCell};
 
 use glam::Vec2;
+use gfx::Color;
 use input::InputEvent;
+use physics::{Body, Collider};
 
 use crate::{
     pause::PauseState,
     scrap::{ScrapColor, ScrapShape},
     weapon::{WeaponFiringState, WeaponStats},
+    world::World,
 };
-use world::World;
 
 use super::{Scene, SceneTransition};
 
@@ -25,8 +25,10 @@ pub struct SandboxScene {
 
 impl SandboxScene {
     pub fn new() -> Self {
+        let mut world = World::new();
+        add_sandbox_walls(&mut world);
         Self {
-            world: World::new(),
+            world,
             pause: PauseState::new(),
             stats_editor: RefCell::new(WeaponStats::default()),
             slow_motion: Cell::new(false),
@@ -34,6 +36,82 @@ impl SandboxScene {
             player_respawn_requested: Cell::new(false),
         }
     }
+}
+
+/// The four classic sandbox obstacle shapes (circle, rect, triangle, octagon).
+fn add_sandbox_walls(world: &mut World) {
+    // Circle — right side.
+    world.add_wall(
+        Body {
+            position: Vec2::new(3.0, 0.0),
+            velocity: Vec2::ZERO,
+            mass: f32::INFINITY,
+            restitution: 0.3,
+            collider: Collider::Circle { radius: 0.65 },
+        },
+        'C',
+        Color::hex(0x7C4DFF99),
+    );
+
+    // Rectangle — left side.
+    world.add_wall(
+        Body {
+            position: Vec2::new(-3.0, 0.0),
+            velocity: Vec2::ZERO,
+            mass: f32::INFINITY,
+            restitution: 0.3,
+            collider: Collider::Convex {
+                vertices: vec![
+                    Vec2::new(-0.8, -0.5),
+                    Vec2::new(0.8, -0.5),
+                    Vec2::new(0.8, 0.5),
+                    Vec2::new(-0.8, 0.5),
+                ],
+            },
+        },
+        'R',
+        Color::hex(0xFF6D0099),
+    );
+
+    // Triangle — top side (equilateral, CCW, circumradius 0.75).
+    let r = 0.75_f32;
+    world.add_wall(
+        Body {
+            position: Vec2::new(0.0, 3.0),
+            velocity: Vec2::ZERO,
+            mass: f32::INFINITY,
+            restitution: 0.3,
+            collider: Collider::Convex {
+                vertices: vec![
+                    Vec2::new(-r * 0.866, -r * 0.5),
+                    Vec2::new(r * 0.866, -r * 0.5),
+                    Vec2::new(0.0, r),
+                ],
+            },
+        },
+        'T',
+        Color::hex(0x00BFA599),
+    );
+
+    // Octagon — bottom side (circumradius 0.75, CCW via increasing angle).
+    let r = 0.75_f32;
+    let oct_verts: Vec<Vec2> = (0..8)
+        .map(|i| {
+            let angle = std::f32::consts::TAU * i as f32 / 8.0;
+            Vec2::new(r * angle.cos(), r * angle.sin())
+        })
+        .collect();
+    world.add_wall(
+        Body {
+            position: Vec2::new(0.0, -3.0),
+            velocity: Vec2::ZERO,
+            mass: f32::INFINITY,
+            restitution: 0.3,
+            collider: Collider::Convex { vertices: oct_verts },
+        },
+        'O',
+        Color::hex(0xFFD60099),
+    );
 }
 
 impl Default for SandboxScene {
@@ -111,20 +189,23 @@ impl Scene for SandboxScene {
                     .num_columns(5)
                     .spacing([6.0, 2.0])
                     .show(ui, |ui| {
-                        // Header row: blank label cell + one symbol per shape
                         ui.label("");
                         for (sym, _) in SHAPES {
                             ui.label(egui::RichText::new(sym).strong());
                         }
                         ui.end_row();
 
-                        // One row per color
                         for (color, name, egui_color) in COLORS {
                             ui.colored_label(egui_color, name);
                             for (_, shape) in SHAPES {
                                 let n = inv.count(color, shape);
-                                let text = egui::RichText::new(n.to_string())
-                                    .color(if n > 0 { egui::Color32::WHITE } else { egui::Color32::DARK_GRAY });
+                                let text = egui::RichText::new(n.to_string()).color(
+                                    if n > 0 {
+                                        egui::Color32::WHITE
+                                    } else {
+                                        egui::Color32::DARK_GRAY
+                                    },
+                                );
                                 ui.label(text);
                             }
                             ui.end_row();
@@ -145,9 +226,7 @@ impl Scene for SandboxScene {
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.set_min_width(160.0);
-
                 ui.label(format!("{alive} enemy alive"));
-
                 ui.separator();
 
                 if ui
@@ -171,8 +250,6 @@ impl Scene for SandboxScene {
                 }
             });
 
-        // Extract state display info as owned values so no long-lived borrow of self.world
-        // is held across the egui closure.
         let state_display = self.world.players.first().map(|p| {
             let color = match &p.weapon.state {
                 WeaponFiringState::Idle => egui::Color32::from_rgb(100, 220, 100),
@@ -190,7 +267,6 @@ impl Scene for SandboxScene {
             .show(ctx, |ui| {
                 ui.set_min_width(220.0);
 
-                // State indicator
                 if let Some((label, color, rem)) = state_display {
                     ui.horizontal(|ui| {
                         ui.label("State:");
@@ -203,9 +279,9 @@ impl Scene for SandboxScene {
 
                 ui.separator();
 
-                // Slow-motion toggle
                 let slow = self.slow_motion.get();
-                let btn_text = if slow { "⏸  Normal speed" } else { "🐢  Slow motion  (0.2×)" };
+                let btn_text =
+                    if slow { "⏸  Normal speed" } else { "🐢  Slow motion  (0.2×)" };
                 let btn = egui::Button::new(btn_text);
                 let btn = if slow {
                     btn.fill(egui::Color32::from_rgb(40, 120, 60))
@@ -218,7 +294,6 @@ impl Scene for SandboxScene {
 
                 ui.separator();
 
-                // Editable weapon stats
                 let mut stats = self.stats_editor.borrow_mut();
 
                 egui::Grid::new("weapon_stats_editor")

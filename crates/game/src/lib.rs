@@ -8,6 +8,7 @@ pub mod player;
 pub mod scenes;
 pub mod scrap;
 pub mod weapon;
+pub mod world;
 
 pub use mode::GameMode;
 pub use pause::PauseState;

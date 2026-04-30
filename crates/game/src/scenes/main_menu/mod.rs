@@ -5,7 +5,7 @@ use input::{
 use std::cell::Cell;
 
 use super::{Scene, SceneTransition};
-use crate::scenes::level_select::LevelSelectScene;
+use crate::scenes::level1::Level1Scene;
 use crate::scenes::sandbox::SandboxScene;
 
 pub struct MainMenuScene {
@@ -50,7 +50,7 @@ impl Scene for MainMenuScene {
         }
 
         if self.start_game.get() {
-            return Some(SceneTransition::Replace(Box::new(LevelSelectScene::new())));
+            return Some(SceneTransition::Replace(Box::new(Level1Scene::new())));
         }
         if self.start_sandbox.get() {
             return Some(SceneTransition::Replace(Box::new(SandboxScene::new())));

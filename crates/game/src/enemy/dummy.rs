@@ -23,6 +23,8 @@ pub struct Dummy {
     pub facing: Vec2,
     health: f32,
     weapon: Weapon,
+    /// Seconds remaining before the enemy is allowed to fire for the first time.
+    fire_delay: f32,
 }
 
 impl Dummy {
@@ -38,8 +40,9 @@ impl Dummy {
             body,
             facing: Vec2::X,
             health: 50.0,
+            fire_delay: 1.0,
             weapon: Weapon::new(WeaponStats {
-                fire_rate: 1.5,
+                fire_rate: 2.0,
                 projectiles_per_shot: 1,
                 shot_arc: 0.0,
                 burst_count: 1,
@@ -49,7 +52,7 @@ impl Dummy {
                 projectile_size: 0.10,
                 projectile_lifetime: 3.0,
                 piercing: 0,
-                damage_total: 15.0,
+                damage_total: 1.0,
                 recoil_force: 0.0,
             }),
         }
@@ -107,7 +110,8 @@ impl Enemy for Dummy {
         }
         physics.body_mut(self.body).velocity = self.facing * DUMMY_SPEED;
 
-        let fire_intent = dist < FIRE_RANGE;
+        self.fire_delay = (self.fire_delay - dt).max(0.0);
+        let fire_intent = dist < FIRE_RANGE && self.fire_delay == 0.0;
         let volleys = self.weapon.tick(dt, fire_intent);
 
         if volleys > 0 {
