@@ -1,11 +1,14 @@
 use glam::{Mat3, Vec2};
-use physics::{Body, BodyHandle, Collider, PhysicsWorld};
+use physics::{Body, Collider, PhysicsWorld};
 
-use crate::camera::Camera;
+use crate::{
+    actor::{draw_shape, Actor, ActorCore},
+    camera::Camera,
+};
 use gfx::{
     shape::polygon,
     style::{Fill, LineCap, LineJoin, Stroke, Style},
-    tessellate, Color,
+    Color,
 };
 
 use super::{FriendlyNpc, NpcKind};
@@ -16,7 +19,7 @@ const FILL_COLOR: u32 = 0xE8A020FF;
 const STROKE_COLOR: u32 = 0x3A2000FF;
 
 pub struct Forgemaster {
-    pub body: BodyHandle,
+    pub actor: ActorCore,
 }
 
 impl Forgemaster {
@@ -26,27 +29,23 @@ impl Forgemaster {
             velocity: Vec2::ZERO,
             mass: f32::INFINITY,
             restitution: 0.0,
-            collider: Collider::Circle { radius: FORGEMASTER_RADIUS },
+            collider: Collider::Circle {
+                radius: FORGEMASTER_RADIUS,
+            },
         });
-        Self { body }
+        Self {
+            actor: ActorCore::new(body),
+        }
     }
 }
 
-impl FriendlyNpc for Forgemaster {
-    fn body(&self) -> BodyHandle {
-        self.body
-    }
-
-    fn interaction_radius(&self) -> f32 {
-        INTERACTION_RADIUS
-    }
-
-    fn kind(&self) -> NpcKind {
-        NpcKind::Forgemaster
+impl Actor for Forgemaster {
+    fn actor(&self) -> &ActorCore {
+        &self.actor
     }
 
     fn draw(&self, physics: &PhysicsWorld, driver: &mut dyn gfx::GraphicsDriver, camera: &Camera) {
-        let pos = physics.body(self.body).position;
+        let pos = physics.body(self.actor.body).position;
         let ndc = camera.world_to_ndc(pos);
         let r = camera.scale(FORGEMASTER_RADIUS * 1.25);
 
@@ -68,9 +67,24 @@ impl FriendlyNpc for Forgemaster {
             }),
         };
 
-        for mesh in tessellate(&polygon(&verts), &style) {
-            let handle = driver.upload_mesh(&mesh.vertices, &mesh.indices);
-            driver.draw_mesh(handle, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
-        }
+        draw_shape(driver, &polygon(&verts), &style, Mat3::IDENTITY);
+    }
+}
+
+impl FriendlyNpc for Forgemaster {
+    fn actor(&self) -> &ActorCore {
+        &self.actor
+    }
+
+    fn interaction_radius(&self) -> f32 {
+        INTERACTION_RADIUS
+    }
+
+    fn kind(&self) -> NpcKind {
+        NpcKind::Forgemaster
+    }
+
+    fn draw(&self, physics: &PhysicsWorld, driver: &mut dyn gfx::GraphicsDriver, camera: &Camera) {
+        <Self as Actor>::draw(self, physics, driver, camera);
     }
 }

@@ -5,19 +5,20 @@ use physics::{Body, BodyHandle, Collider, Contact, PhysicsWorld};
 use rand::Rng;
 
 use crate::{
+    actor::{draw_shape, Actor},
     camera::Camera,
     enemy::{dummy::Dummy, Enemy, LootTable},
     hud,
     input::InputState,
     npc::{forgemaster::Forgemaster, FriendlyNpc, NpcKind},
-    player::{draw_players, Player, PLAYER_RADIUS},
+    player::{Player, PLAYER_RADIUS},
     scrap::{draw_scrap, Inventory, Scrap, ScrapColor, ScrapShape},
     weapon::{Projectile, ProjectileOwner},
 };
 use gfx::{
     shape::{circle, line, polygon},
     style::{Fill, LineCap, LineJoin, Stroke, Style},
-    tessellate, Color,
+    Color,
 };
 
 pub const GROUND_COLOR: [f32; 4] = [0.13, 0.14, 0.12, 1.0];
@@ -78,7 +79,9 @@ impl World {
             input_state: InputState::default(),
             time_scale: 1.0,
         };
-        world.players.push(Player::new(0, Vec2::ZERO, &mut world.physics));
+        world
+            .players
+            .push(Player::new(0, Vec2::ZERO, &mut world.physics));
         world
     }
 
@@ -86,7 +89,11 @@ impl World {
     /// can store it for later removal (e.g. a door that opens).
     pub fn add_wall(&mut self, body: Body, label: char, fill_color: Color) -> BodyHandle {
         let handle = self.physics.add_body(body);
-        self.walls.push(Wall { body: handle, label, fill_color });
+        self.walls.push(Wall {
+            body: handle,
+            label,
+            fill_color,
+        });
         handle
     }
 
@@ -102,23 +109,35 @@ impl World {
     }
 
     pub fn spawn_forgemaster(&mut self, pos: Vec2) {
-        self.npcs.push(Box::new(Forgemaster::new(pos, &mut self.physics)));
+        self.npcs
+            .push(Box::new(Forgemaster::new(pos, &mut self.physics)));
     }
 
     /// Spawn a scrap directly into the world at the given position.
     pub fn spawn_scrap(&mut self, pos: Vec2, color: ScrapColor, shape: ScrapShape) {
-        self.scraps.push(Scrap { position: pos, color, shape });
+        self.scraps.push(Scrap {
+            position: pos,
+            color,
+            shape,
+        });
     }
 
     /// Return the kind of the nearest friendly NPC within interaction range of P1, if any.
     pub fn nearest_interactable_npc(&self) -> Option<NpcKind> {
-        let player_pos = self.players.first().map(|p| self.physics.body(p.body).position)?;
+        let player_pos = self
+            .players
+            .first()
+            .map(|p| self.physics.body(p.actor.body).position)?;
         self.npcs
             .iter()
             .filter_map(|npc| {
                 let npc_pos = self.physics.body(npc.body()).position;
                 let dist = player_pos.distance(npc_pos);
-                if dist <= npc.interaction_radius() { Some((dist, npc.kind())) } else { None }
+                if dist <= npc.interaction_radius() {
+                    Some((dist, npc.kind()))
+                } else {
+                    None
+                }
             })
             .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(_, kind)| kind)
@@ -127,7 +146,7 @@ impl World {
     pub fn respawn_player(&mut self, slot: usize) {
         if let Some(player) = self.players.iter_mut().find(|p| p.slot == slot) {
             player.health = 100.0;
-            let body = self.physics.body_mut(player.body);
+            let body = self.physics.body_mut(player.actor.body);
             body.position = Vec2::ZERO;
             body.velocity = Vec2::ZERO;
         }
@@ -155,28 +174,33 @@ impl World {
 
         for player in &mut self.players {
             if player.health <= 0.0 {
-                self.physics.body_mut(player.body).velocity = Vec2::ZERO;
+                self.physics.body_mut(player.actor.body).velocity = Vec2::ZERO;
                 continue;
             }
             let intent = snapshot.player(player.slot);
             let aim_dir = if player.slot == 0 && !intent.aim_from_stick {
-                let player_ndc =
-                    self.camera.world_to_ndc(self.physics.body(player.body).position);
+                let player_ndc = self
+                    .camera
+                    .world_to_ndc(self.physics.body(player.actor.body).position);
                 let dir = self.cursor_ndc - player_ndc;
-                if dir.length_squared() > 1e-6 { dir.normalize() } else { player.facing }
+                if dir.length_squared() > 1e-6 {
+                    dir.normalize()
+                } else {
+                    player.actor.facing
+                }
             } else {
                 intent.aim_dir
             };
             if aim_dir.length_squared() > 1e-6 {
-                player.facing = aim_dir;
+                player.actor.facing = aim_dir;
             }
-            self.physics.body_mut(player.body).velocity =
+            self.physics.body_mut(player.actor.body).velocity =
                 intent.move_dir * crate::player::PLAYER_SPEED;
 
             let volleys = player.weapon.tick(dt, intent.fire);
             if volleys > 0 {
-                let pos = self.physics.body(player.body).position;
-                let dirs = player.weapon.volley_directions(player.facing);
+                let pos = self.physics.body(player.actor.body).position;
+                let dirs = player.weapon.volley_directions(player.actor.facing);
                 let s = &player.weapon.stats;
                 spawn_requests.push((
                     pos,
@@ -188,8 +212,8 @@ impl World {
                     s.damage_total,
                     s.piercing,
                 ));
-                let recoil = -player.facing * player.weapon.stats.recoil_force;
-                self.physics.body_mut(player.body).velocity += recoil;
+                let recoil = -player.actor.facing * player.weapon.stats.recoil_force;
+                self.physics.body_mut(player.actor.body).velocity += recoil;
             }
         }
 
@@ -198,7 +222,7 @@ impl World {
             .players
             .iter()
             .filter(|p| p.health > 0.0)
-            .map(|p| self.physics.body(p.body).position)
+            .map(|p| self.physics.body(p.actor.body).position)
             .collect();
 
         let mut enemy_results: Vec<(Vec<(Vec2, Vec<Vec2>)>, f32, f32, f32, f32, u32)> = Vec::new();
@@ -262,7 +286,7 @@ impl World {
             .players
             .iter()
             .filter(|p| p.health > 0.0)
-            .map(|p| self.physics.body(p.body).position)
+            .map(|p| self.physics.body(p.actor.body).position)
             .collect();
         if !live_positions.is_empty() {
             let avg = live_positions.iter().copied().sum::<Vec2>() / live_positions.len() as f32;
@@ -271,8 +295,11 @@ impl World {
 
         tick_projectiles(&mut self.projectiles, dt);
 
-        let player_bodies: Vec<(BodyHandle, usize)> =
-            self.players.iter().map(|p| (p.body, p.slot)).collect();
+        let player_bodies: Vec<(BodyHandle, usize)> = self
+            .players
+            .iter()
+            .map(|p| (p.actor.body, p.slot))
+            .collect();
         let enemy_bodies: Vec<BodyHandle> = self.enemies.iter().map(|e| e.body()).collect();
         let contacts = self.physics.contacts().to_vec();
 
@@ -287,9 +314,14 @@ impl World {
 
         let death_loot = cleanup_dead_enemies(&mut self.enemies, &mut self.physics);
         spawn_scraps(&mut self.scraps, death_loot);
-        collect_scraps(&mut self.scraps, &mut self.inventory, &self.players, &self.physics);
+        collect_scraps(
+            &mut self.scraps,
+            &mut self.inventory,
+            &self.players,
+            &self.physics,
+        );
         let player_body_handles: Vec<BodyHandle> =
-            self.players.iter().map(|p| p.body).collect();
+            self.players.iter().map(|p| p.actor.body).collect();
         cleanup_projectiles(
             &mut self.projectiles,
             &mut self.physics,
@@ -310,7 +342,9 @@ impl World {
         for scrap in &self.scraps {
             draw_scrap(scrap, driver, &self.camera);
         }
-        draw_players(&self.players, &self.physics, driver, &self.camera);
+        for player in &self.players {
+            player.draw(&self.physics, driver, &self.camera);
+        }
         for player in &self.players {
             draw_spread_cone(player, &self.physics, driver, &self.camera);
         }
@@ -320,7 +354,7 @@ impl World {
         draw_projectiles(&self.projectiles, &self.physics, driver, &self.camera);
 
         let contacts = self.physics.contacts();
-        let player_body = self.players.first().map(|p| p.body);
+        let player_body = self.players.first().map(|p| p.actor.body);
         let wall_hits: Vec<(char, bool)> = self
             .walls
             .iter()
@@ -345,7 +379,10 @@ impl World {
     }
 
     pub fn player_health(&self, slot: usize) -> Option<f32> {
-        self.players.iter().find(|p| p.slot == slot).map(|p| p.health)
+        self.players
+            .iter()
+            .find(|p| p.slot == slot)
+            .map(|p| p.health)
     }
 }
 
@@ -431,7 +468,11 @@ fn spawn_scraps(scraps: &mut Vec<Scrap>, death_loot: Vec<(Vec2, LootTable)>) {
             let color = *ScrapColor::ALL.choose(&mut rng).unwrap();
             let shape = *ScrapShape::ALL.choose(&mut rng).unwrap();
             let offset = Vec2::new(rng.gen_range(-0.3..=0.3), rng.gen_range(-0.3..=0.3));
-            scraps.push(Scrap { position: pos + offset, color, shape });
+            scraps.push(Scrap {
+                position: pos + offset,
+                color,
+                shape,
+            });
         }
     }
 }
@@ -446,7 +487,7 @@ fn collect_scraps(
     let player_positions: Vec<Vec2> = players
         .iter()
         .filter(|p| p.health > 0.0)
-        .map(|p| physics.body(p.body).position)
+        .map(|p| physics.body(p.actor.body).position)
         .collect();
 
     let mut i = 0;
@@ -483,7 +524,7 @@ fn draw_spread_cone(
     if half_angle < 1e-4 {
         return;
     }
-    let pos = physics.body(player.body).position;
+    let pos = physics.body(player.actor.body).position;
     let range = (stats.projectile_speed * stats.projectile_lifetime).min(8.0);
     let ndc_pos = camera.world_to_ndc(pos);
     let style = Style::stroked(Stroke {
@@ -492,8 +533,8 @@ fn draw_spread_cone(
         cap: LineCap::Round,
         join: LineJoin::Round,
     });
-    let left_end = camera.world_to_ndc(pos + rotate_vec(player.facing, half_angle) * range);
-    let right_end = camera.world_to_ndc(pos + rotate_vec(player.facing, -half_angle) * range);
+    let left_end = camera.world_to_ndc(pos + rotate_vec(player.actor.facing, half_angle) * range);
+    let right_end = camera.world_to_ndc(pos + rotate_vec(player.actor.facing, -half_angle) * range);
     draw_shape(driver, &line(ndc_pos, left_end), &style, Mat3::IDENTITY);
     draw_shape(driver, &line(ndc_pos, right_end), &style, Mat3::IDENTITY);
 }
@@ -545,11 +586,18 @@ pub fn draw_walls(
         match &body.collider {
             Collider::Circle { radius } => {
                 let ndc = camera.world_to_ndc(pos);
-                draw_shape(driver, &circle(ndc, camera.scale(*radius)), &style, Mat3::IDENTITY);
+                draw_shape(
+                    driver,
+                    &circle(ndc, camera.scale(*radius)),
+                    &style,
+                    Mat3::IDENTITY,
+                );
             }
             Collider::Convex { vertices } => {
-                let ndc_verts: Vec<Vec2> =
-                    vertices.iter().map(|v| camera.world_to_ndc(pos + *v)).collect();
+                let ndc_verts: Vec<Vec2> = vertices
+                    .iter()
+                    .map(|v| camera.world_to_ndc(pos + *v))
+                    .collect();
                 draw_shape(driver, &polygon(&ndc_verts), &style, Mat3::IDENTITY);
             }
             Collider::Mesh { .. } => {}
@@ -643,18 +691,6 @@ fn cleanup_projectiles(
     }
 }
 
-pub fn draw_shape(
-    driver: &mut dyn gfx::GraphicsDriver,
-    path: &gfx::Path,
-    style: &gfx::Style,
-    transform: Mat3,
-) {
-    for mesh in tessellate(path, style) {
-        let handle = driver.upload_mesh(&mesh.vertices, &mesh.indices);
-        driver.draw_mesh(handle, transform, [1.0, 1.0, 1.0, 1.0]);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -677,7 +713,7 @@ mod tests {
             button: Button::DPadRight,
             pressed: true,
         }]);
-        let pos = world.physics.body(world.players[0].body).position;
+        let pos = world.physics.body(world.players[0].actor.body).position;
         assert!(pos.x > 0.0);
     }
 
@@ -689,7 +725,7 @@ mod tests {
             button: Button::DPadRight,
             pressed: true,
         }]);
-        let velocity = world.physics.body(world.players[0].body).velocity;
+        let velocity = world.physics.body(world.players[0].actor.body).velocity;
         assert!((velocity.length() - crate::player::PLAYER_SPEED).abs() < 1e-5);
     }
 
@@ -706,7 +742,7 @@ mod tests {
             button: Button::DPadRight,
             pressed: false,
         }]);
-        let velocity = world.physics.body(world.players[0].body).velocity;
+        let velocity = world.physics.body(world.players[0].actor.body).velocity;
         assert_eq!(velocity, Vec2::ZERO);
     }
 
@@ -718,9 +754,9 @@ mod tests {
             button: Button::DPadRight,
             pressed: true,
         }]);
-        let x1 = world.physics.body(world.players[0].body).position.x;
+        let x1 = world.physics.body(world.players[0].actor.body).position.x;
         world.tick(&[]);
-        let x2 = world.physics.body(world.players[0].body).position.x;
+        let x2 = world.physics.body(world.players[0].actor.body).position.x;
         assert!(x2 > x1);
     }
 
@@ -728,7 +764,7 @@ mod tests {
     fn cursor_updates_player_facing() {
         let mut world = World::new();
         world.tick(&[InputEvent::CursorMoved { x: 0.0, y: 1.0 }]);
-        assert_eq!(world.players[0].facing, Vec2::Y);
+        assert_eq!(world.players[0].actor.facing, Vec2::Y);
     }
 
     /// Regression: aim must point from the player's position to the cursor, not
@@ -738,14 +774,14 @@ mod tests {
         use crate::camera::HALF_VIEW;
         let mut world = World::new();
         let player_x = 2.5_f32;
-        world.physics.body_mut(world.players[0].body).position = Vec2::new(player_x, 0.0);
+        world.physics.body_mut(world.players[0].actor.body).position = Vec2::new(player_x, 0.0);
         world.tick(&[InputEvent::CursorMoved { x: 0.0, y: 1.0 }]);
         let player_ndc_x = player_x / HALF_VIEW;
         let expected = Vec2::new(-player_ndc_x, 1.0).normalize();
         assert!(
-            (world.players[0].facing - expected).length() < 1e-5,
+            (world.players[0].actor.facing - expected).length() < 1e-5,
             "facing {:?} expected {:?}",
-            world.players[0].facing,
+            world.players[0].actor.facing,
             expected
         );
     }
@@ -761,7 +797,7 @@ mod tests {
                 value: 1.0,
             },
         ]);
-        assert_eq!(world.players[0].facing, Vec2::X);
+        assert_eq!(world.players[0].actor.facing, Vec2::X);
     }
 
     #[test]
@@ -778,8 +814,10 @@ mod tests {
         use crate::player::Player;
 
         let mut world = World::new();
-        world.physics.body_mut(world.players[0].body).position = Vec2::new(-4.0, 0.0);
-        world.players.push(Player::new(1, Vec2::new(4.0, 0.0), &mut world.physics));
+        world.physics.body_mut(world.players[0].actor.body).position = Vec2::new(-4.0, 0.0);
+        world
+            .players
+            .push(Player::new(1, Vec2::new(4.0, 0.0), &mut world.physics));
         world.camera.position = Vec2::new(0.0, 10.0);
 
         for _ in 0..100 {
@@ -806,10 +844,10 @@ mod tests {
     fn respawn_player_resets_health_and_position() {
         let mut world = World::new();
         world.players[0].health = 0.0;
-        world.physics.body_mut(world.players[0].body).position = Vec2::new(5.0, 5.0);
+        world.physics.body_mut(world.players[0].actor.body).position = Vec2::new(5.0, 5.0);
         world.respawn_player(0);
         assert_eq!(world.players[0].health, 100.0);
-        let pos = world.physics.body(world.players[0].body).position;
+        let pos = world.physics.body(world.players[0].actor.body).position;
         assert_eq!(pos, Vec2::ZERO);
     }
 

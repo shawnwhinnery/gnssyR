@@ -44,14 +44,14 @@ fn weighted_color(contributions: &[(ScrapColor, ScrapShape, u16)], total: u32) -
 
 fn color_rgb(color: ScrapColor) -> [f32; 3] {
     match color {
-        ScrapColor::Red    => [0.90, 0.15, 0.15],
+        ScrapColor::Red => [0.90, 0.15, 0.15],
         ScrapColor::Orange => [0.95, 0.50, 0.10],
         ScrapColor::Yellow => [0.95, 0.90, 0.10],
-        ScrapColor::Green  => [0.10, 0.85, 0.20],
-        ScrapColor::Cyan   => [0.10, 0.85, 0.90],
-        ScrapColor::Blue   => [0.15, 0.30, 0.95],
+        ScrapColor::Green => [0.10, 0.85, 0.20],
+        ScrapColor::Cyan => [0.10, 0.85, 0.90],
+        ScrapColor::Blue => [0.15, 0.30, 0.95],
         ScrapColor::Purple => [0.65, 0.10, 0.90],
-        ScrapColor::Pink   => [0.95, 0.35, 0.75],
+        ScrapColor::Pink => [0.95, 0.35, 0.75],
     }
 }
 
@@ -129,7 +129,12 @@ fn blended_shape(contributions: &[(ScrapColor, ScrapShape, u16)], total: u32) ->
         if weight < 1e-6 {
             continue;
         }
-        let shape = [ScrapShape::Diamond, ScrapShape::Circle, ScrapShape::Crescent, ScrapShape::Triangle][shape_idx];
+        let shape = [
+            ScrapShape::Diamond,
+            ScrapShape::Circle,
+            ScrapShape::Crescent,
+            ScrapShape::Triangle,
+        ][shape_idx];
         let verts = shape_verts(shape);
         for (b, v) in blended.iter_mut().zip(verts.iter()) {
             *b += *v * weight;
@@ -151,17 +156,13 @@ fn blended_shape(contributions: &[(ScrapColor, ScrapShape, u16)], total: u32) ->
 // Drawing
 // ---------------------------------------------------------------------------
 
-pub fn draw_mod_part(
-    part: &ModPart,
-    center: Vec2,
-    driver: &mut dyn gfx::GraphicsDriver,
-) {
-    use glam::Mat3;
+pub fn draw_mod_part(part: &ModPart, center: Vec2, driver: &mut dyn gfx::GraphicsDriver) {
     use gfx::{
         shape::polygon,
         style::{Fill, LineCap, LineJoin, Stroke, Style},
         tessellate, Color,
     };
+    use glam::Mat3;
 
     let verts: Vec<Vec2> = part.shape.iter().map(|&v| center + v).collect();
     let [r, g, b] = part.avg_color;

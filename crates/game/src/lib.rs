@@ -1,3 +1,4 @@
+pub mod actor;
 pub mod camera;
 pub mod enemy;
 pub mod hud;

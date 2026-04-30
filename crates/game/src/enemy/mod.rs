@@ -3,7 +3,7 @@ pub mod dummy;
 use glam::Vec2;
 use physics::{BodyHandle, PhysicsWorld};
 
-use crate::{camera::Camera, weapon::WeaponStats};
+use crate::{actor::ActorCore, camera::Camera, weapon::WeaponStats};
 
 #[derive(Debug, Clone, Copy)]
 pub struct LootTable {
@@ -12,7 +12,12 @@ pub struct LootTable {
 }
 
 pub trait Enemy {
-    fn body(&self) -> BodyHandle;
+    fn actor(&self) -> &ActorCore;
+    fn actor_mut(&mut self) -> &mut ActorCore;
+
+    fn body(&self) -> BodyHandle {
+        self.actor().body
+    }
     fn health(&self) -> f32;
     fn is_alive(&self) -> bool {
         self.health() > 0.0
@@ -34,10 +39,5 @@ pub trait Enemy {
 
     fn loot_table(&self) -> LootTable;
 
-    fn draw(
-        &self,
-        physics: &PhysicsWorld,
-        driver: &mut dyn gfx::GraphicsDriver,
-        camera: &Camera,
-    );
+    fn draw(&self, physics: &PhysicsWorld, driver: &mut dyn gfx::GraphicsDriver, camera: &Camera);
 }

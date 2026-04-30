@@ -21,7 +21,9 @@ pub struct PauseState {
 
 impl PauseState {
     pub fn new() -> Self {
-        Self { mode: Cell::new(GameMode::default()) }
+        Self {
+            mode: Cell::new(GameMode::default()),
+        }
     }
 
     /// The current top-level game mode.
@@ -151,7 +153,7 @@ mod tests {
         // Simulates the OS delivering press + release in separate ticks.
         let mut p = PauseState::new();
         p.tick(&[escape_down()]); // → Paused
-        p.tick(&[escape_up()]);   // → still Paused (key-up ignored)
+        p.tick(&[escape_up()]); // → still Paused (key-up ignored)
         assert_eq!(p.mode(), GameMode::Paused);
     }
 }

@@ -223,7 +223,12 @@ impl Scene for GfxShowcaseScene {
                 .then(Transform::translate(0.0, -0.33));
             let c = circle(Vec2::new(0.0, 0.33), 0.025);
             let hue = (i as f32 / 8.0 * 360.0) as u32;
-            draw_shape(driver, &c, &Style::filled(hsv_color(hue, 0.8, 1.0)), t.to_mat3());
+            draw_shape(
+                driver,
+                &c,
+                &Style::filled(hsv_color(hue, 0.8, 1.0)),
+                t.to_mat3(),
+            );
         }
     }
 }

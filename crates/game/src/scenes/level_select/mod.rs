@@ -1,4 +1,7 @@
-use input::{InputEvent, event::{Button, KeyCode}};
+use input::{
+    event::{Button, KeyCode},
+    InputEvent,
+};
 use std::cell::Cell;
 
 use super::{Scene, SceneTransition};
@@ -10,7 +13,9 @@ pub struct LevelSelectScene {
 
 impl LevelSelectScene {
     pub fn new() -> Self {
-        Self { back: Cell::new(false) }
+        Self {
+            back: Cell::new(false),
+        }
     }
 }
 
@@ -23,7 +28,12 @@ impl Default for LevelSelectScene {
 impl Scene for LevelSelectScene {
     fn tick(&mut self, events: &[InputEvent]) -> Option<SceneTransition> {
         for event in events {
-            if let InputEvent::Button { button: Button::Key(KeyCode::Escape), pressed: true, .. } = event {
+            if let InputEvent::Button {
+                button: Button::Key(KeyCode::Escape),
+                pressed: true,
+                ..
+            } = event
+            {
                 self.back.set(true);
             }
         }
@@ -67,7 +77,10 @@ impl Scene for LevelSelectScene {
                         ui.add_space(48.0);
 
                         if ui
-                            .add_sized([200.0, 48.0], egui::Button::new(egui::RichText::new("Back").size(22.0)))
+                            .add_sized(
+                                [200.0, 48.0],
+                                egui::Button::new(egui::RichText::new("Back").size(22.0)),
+                            )
                             .clicked()
                         {
                             self.back.set(true);

@@ -102,3 +102,16 @@ Both instance centroids are visible in the readback.
 
 ### `surface_size_reflects_config`
 After `resize(640, 480)`, `surface_size()` == `(640, 480)`.
+
+---
+
+## Bitmap
+
+### `upload_texture_draw_bitmap_no_panic`
+With a valid GPU driver: `upload_texture`, `begin_frame`, `clear`, `draw_bitmap`, `end_frame`,
+`present`, `free_texture` completes without panic.
+
+### `bitmap_readback_matches_expected` (optional)
+Offscreen readback of a solid texture matches expected RGBA within ±2 per channel
+(same tolerance as mesh readback tests).
+

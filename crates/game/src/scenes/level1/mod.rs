@@ -1,7 +1,7 @@
 use std::cell::Cell;
 
-use glam::Vec2;
 use gfx::Color;
+use glam::Vec2;
 use input::InputEvent;
 use physics::{Body, BodyHandle, Collider};
 
@@ -39,7 +39,13 @@ fn rect(hw: f32, hh: f32) -> Vec<Vec2> {
 }
 
 fn static_wall(position: Vec2, collider: Collider) -> Body {
-    Body { position, velocity: Vec2::ZERO, mass: f32::INFINITY, restitution: 0.3, collider }
+    Body {
+        position,
+        velocity: Vec2::ZERO,
+        mass: f32::INFINITY,
+        restitution: 0.3,
+        collider,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -75,28 +81,52 @@ impl Level1Scene {
         let mut world = World::new();
 
         // Place P1 at the centre-left of room 1.
-        world.physics.body_mut(world.players[0].body).position = Vec2::new(-9.0, 0.0);
+        world.physics.body_mut(world.players[0].actor.body).position = Vec2::new(-9.0, 0.0);
 
         // ── Outer boundary ───────────────────────────────────────────────────
         // Top wall  (spans both rooms)
         world.add_wall(
-            static_wall(Vec2::new(0.0, 6.25), Collider::Convex { vertices: rect(14.25, 0.25) }),
-            'W', Color::hex(WALL_COLOR),
+            static_wall(
+                Vec2::new(0.0, 6.25),
+                Collider::Convex {
+                    vertices: rect(14.25, 0.25),
+                },
+            ),
+            'W',
+            Color::hex(WALL_COLOR),
         );
         // Bottom wall
         world.add_wall(
-            static_wall(Vec2::new(0.0, -6.25), Collider::Convex { vertices: rect(14.25, 0.25) }),
-            'W', Color::hex(WALL_COLOR),
+            static_wall(
+                Vec2::new(0.0, -6.25),
+                Collider::Convex {
+                    vertices: rect(14.25, 0.25),
+                },
+            ),
+            'W',
+            Color::hex(WALL_COLOR),
         );
         // Left wall
         world.add_wall(
-            static_wall(Vec2::new(-14.25, 0.0), Collider::Convex { vertices: rect(0.25, 6.25) }),
-            'W', Color::hex(WALL_COLOR),
+            static_wall(
+                Vec2::new(-14.25, 0.0),
+                Collider::Convex {
+                    vertices: rect(0.25, 6.25),
+                },
+            ),
+            'W',
+            Color::hex(WALL_COLOR),
         );
         // Right wall
         world.add_wall(
-            static_wall(Vec2::new(14.25, 0.0), Collider::Convex { vertices: rect(0.25, 6.25) }),
-            'W', Color::hex(WALL_COLOR),
+            static_wall(
+                Vec2::new(14.25, 0.0),
+                Collider::Convex {
+                    vertices: rect(0.25, 6.25),
+                },
+            ),
+            'W',
+            Color::hex(WALL_COLOR),
         );
 
         // ── Divider (y: 1.5..6 and -6..-1.5, gap at centre) ─────────────────
@@ -105,42 +135,50 @@ impl Level1Scene {
         world.add_wall(
             static_wall(
                 Vec2::new(0.0, div_top_y),
-                Collider::Convex { vertices: rect(DOOR_HALF_W, div_top_hh) },
+                Collider::Convex {
+                    vertices: rect(DOOR_HALF_W, div_top_hh),
+                },
             ),
-            'W', Color::hex(DIVIDER_COLOR),
+            'W',
+            Color::hex(DIVIDER_COLOR),
         );
         world.add_wall(
             static_wall(
                 Vec2::new(0.0, -div_top_y),
-                Collider::Convex { vertices: rect(DOOR_HALF_W, div_top_hh) },
+                Collider::Convex {
+                    vertices: rect(DOOR_HALF_W, div_top_hh),
+                },
             ),
-            'W', Color::hex(DIVIDER_COLOR),
+            'W',
+            Color::hex(DIVIDER_COLOR),
         );
 
         // ── Door (fills the gap, closed at start) ────────────────────────────
         let door_handle = world.add_wall(
             static_wall(
                 Vec2::new(0.0, 0.0),
-                Collider::Convex { vertices: rect(DOOR_HALF_W, DOOR_HALF_H) },
+                Collider::Convex {
+                    vertices: rect(DOOR_HALF_W, DOOR_HALF_H),
+                },
             ),
-            'D', Color::hex(DOOR_CLOSED_COLOR),
+            'D',
+            Color::hex(DOOR_CLOSED_COLOR),
         );
 
         // ── Cover pillars (one per room) ─────────────────────────────────────
         world.add_wall(
             static_wall(Vec2::new(-7.0, 2.0), Collider::Circle { radius: 0.7 }),
-            'P', Color::hex(PILLAR_COLOR),
+            'P',
+            Color::hex(PILLAR_COLOR),
         );
         world.add_wall(
             static_wall(Vec2::new(7.0, -2.0), Collider::Circle { radius: 0.7 }),
-            'P', Color::hex(PILLAR_COLOR),
+            'P',
+            Color::hex(PILLAR_COLOR),
         );
 
         // ── Room 1 enemies ───────────────────────────────────────────────────
-        let room1_positions = [
-            Vec2::new(-5.0, 3.5),
-            Vec2::new(-11.0, -3.5),
-        ];
+        let room1_positions = [Vec2::new(-5.0, 3.5), Vec2::new(-11.0, -3.5)];
         let mut room1_handles = Vec::new();
         for pos in &room1_positions {
             world.spawn_enemy(*pos);
@@ -163,16 +201,18 @@ impl Level1Scene {
 
     fn room1_cleared(&self) -> bool {
         !self.room1_handles.is_empty()
-            && self.room1_handles.iter().all(|&h| {
-                !self.world.enemies.iter().any(|e| e.body() == h)
-            })
+            && self
+                .room1_handles
+                .iter()
+                .all(|&h| !self.world.enemies.iter().any(|e| e.body() == h))
     }
 
     fn room2_cleared(&self) -> bool {
         !self.room2_handles.is_empty()
-            && self.room2_handles.iter().all(|&h| {
-                !self.world.enemies.iter().any(|e| e.body() == h)
-            })
+            && self
+                .room2_handles
+                .iter()
+                .all(|&h| !self.world.enemies.iter().any(|e| e.body() == h))
     }
 
     fn room1_alive_count(&self) -> usize {
@@ -193,7 +233,7 @@ impl Level1Scene {
         self.world
             .players
             .iter()
-            .any(|p| self.world.physics.body(p.body).position.x > 0.5)
+            .any(|p| self.world.physics.body(p.actor.body).position.x > 0.5)
     }
 
     // ── Door control ─────────────────────────────────────────────────────────
@@ -209,7 +249,9 @@ impl Level1Scene {
             let h = self.world.add_wall(
                 static_wall(
                     Vec2::new(0.0, 0.0),
-                    Collider::Convex { vertices: rect(DOOR_HALF_W, DOOR_HALF_H) },
+                    Collider::Convex {
+                        vertices: rect(DOOR_HALF_W, DOOR_HALF_H),
+                    },
                 ),
                 'D',
                 Color::hex(DOOR_CLOSED_COLOR),
@@ -221,13 +263,11 @@ impl Level1Scene {
     // ── Spawn room 2 enemies and close door behind the player ────────────────
     fn enter_room2(&mut self) {
         self.close_door();
-        let positions = [
-            Vec2::new(5.0, -3.5),
-            Vec2::new(11.0, 3.5),
-        ];
+        let positions = [Vec2::new(5.0, -3.5), Vec2::new(11.0, 3.5)];
         for pos in &positions {
             self.world.spawn_enemy(*pos);
-            self.room2_handles.push(self.world.enemies.last().unwrap().body());
+            self.room2_handles
+                .push(self.world.enemies.last().unwrap().body());
         }
     }
 }
@@ -308,13 +348,13 @@ impl Scene for Level1Scene {
                     egui::Color32::WHITE,
                 )
             }
-            Phase::DoorOpen => ("ADVANCE!".to_string(), egui::Color32::from_rgb(100, 220, 100)),
+            Phase::DoorOpen => (
+                "ADVANCE!".to_string(),
+                egui::Color32::from_rgb(100, 220, 100),
+            ),
             Phase::Room2 => {
                 let n = self.room2_alive_count();
-                (
-                    format!("FINAL ROOM  —  {n} enemies"),
-                    egui::Color32::WHITE,
-                )
+                (format!("FINAL ROOM  —  {n} enemies"), egui::Color32::WHITE)
             }
             Phase::Win | Phase::GameOver => (String::new(), egui::Color32::WHITE),
         };
@@ -323,7 +363,10 @@ impl Scene for Level1Scene {
                 .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 12.0))
                 .show(ctx, |ui| {
                     ui.label(
-                        egui::RichText::new(&banner).size(22.0).color(banner_color).strong(),
+                        egui::RichText::new(&banner)
+                            .size(22.0)
+                            .color(banner_color)
+                            .strong(),
                     );
                 });
         }

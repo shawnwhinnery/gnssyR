@@ -7,7 +7,7 @@ pub mod style;
 pub mod transform;
 
 pub use color::Color;
-pub use driver::{GraphicsDriver, Mesh, MeshHandle, Vertex};
+pub use driver::{GraphicsDriver, Mesh, MeshHandle, TextureHandle, Vertex};
 pub use glam::Vec2;
 pub use path::Path;
 pub use scene::{Group, Node, Scene, Shape};

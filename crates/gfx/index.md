@@ -27,6 +27,22 @@ Backend-agnostic vector graphics layer. Defines the `GraphicsDriver` trait and a
 - Passing an invalid or expired handle is undefined behaviour
 - Multiple calls with the same handle are valid; each is an independent draw
 
+
+### `upload_texture(pixels, width, height) -> TextureHandle`
+- `pixels` are packed ARGB `u32` in row-major order (`(a << 24) | (r << 16) | (g << 8) | b`)
+- Returns a handle that remains valid across `begin_frame` / `end_frame` until `free_texture`
+- `width` and `height` must be positive; `pixels.len()` must equal `width * height` (otherwise undefined)
+- Texture handles are independent of mesh handles (no numeric relationship is guaranteed)
+
+### `free_texture(handle)`
+- Releases resources for a texture created with `upload_texture`
+- Freeing an unknown or already-freed handle is a no-op
+
+### `draw_bitmap(texture, transform, tint)`
+- Draws the entire bitmap as a quad in clip space with the same transform semantics as `draw_mesh`
+- `tint` multiplies sampled texel RGBA (straight alpha)
+- Invalid or freed texture handles result in no draw (no panic)
+
 ### `surface_size() -> (u32, u32)`
 - Returns the current pixel dimensions of the render target
 - May change between frames (e.g. on window resize)

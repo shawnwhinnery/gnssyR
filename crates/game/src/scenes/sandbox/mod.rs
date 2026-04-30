@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 
-use glam::Vec2;
 use gfx::Color;
+use glam::Vec2;
 use input::{
     event::{Button, InputEvent, KeyCode},
     player::PlayerId,
@@ -46,7 +46,9 @@ struct ForgeContribution {
 
 impl ForgeContribution {
     fn zeroed() -> Self {
-        Self { selected: [0; NUM_KINDS] }
+        Self {
+            selected: [0; NUM_KINDS],
+        }
     }
 
     fn total(&self) -> u32 {
@@ -181,7 +183,9 @@ fn add_sandbox_walls(world: &mut World) {
             velocity: Vec2::ZERO,
             mass: f32::INFINITY,
             restitution: 0.3,
-            collider: Collider::Convex { vertices: oct_verts },
+            collider: Collider::Convex {
+                vertices: oct_verts,
+            },
         },
         'O',
         Color::hex(0xFFD60099),
@@ -283,7 +287,7 @@ impl Scene for SandboxScene {
             let color = self.spawn_color.get();
             let shape = self.spawn_shape.get();
             if let Some(player) = self.world.players.first() {
-                let pos = self.world.physics.body(player.body).position;
+                let pos = self.world.physics.body(player.actor.body).position;
                 let offset = Vec2::new(0.5, 0.5);
                 self.world.spawn_scrap(pos + offset, color, shape);
             }
@@ -359,14 +363,42 @@ const SHAPES: [(&str, ScrapShape); 4] = [
 ];
 
 const COLORS: [(ScrapColor, &str, egui::Color32); 8] = [
-    (ScrapColor::Red,    "Red",    egui::Color32::from_rgb(230, 38,  38)),
-    (ScrapColor::Orange, "Orange", egui::Color32::from_rgb(242, 127, 25)),
-    (ScrapColor::Yellow, "Yellow", egui::Color32::from_rgb(220, 210, 25)),
-    (ScrapColor::Green,  "Green",  egui::Color32::from_rgb(25,  200, 51)),
-    (ScrapColor::Cyan,   "Cyan",   egui::Color32::from_rgb(25,  200, 220)),
-    (ScrapColor::Blue,   "Blue",   egui::Color32::from_rgb(38,  76,  240)),
-    (ScrapColor::Purple, "Purple", egui::Color32::from_rgb(165, 25,  230)),
-    (ScrapColor::Pink,   "Pink",   egui::Color32::from_rgb(240, 89,  190)),
+    (ScrapColor::Red, "Red", egui::Color32::from_rgb(230, 38, 38)),
+    (
+        ScrapColor::Orange,
+        "Orange",
+        egui::Color32::from_rgb(242, 127, 25),
+    ),
+    (
+        ScrapColor::Yellow,
+        "Yellow",
+        egui::Color32::from_rgb(220, 210, 25),
+    ),
+    (
+        ScrapColor::Green,
+        "Green",
+        egui::Color32::from_rgb(25, 200, 51),
+    ),
+    (
+        ScrapColor::Cyan,
+        "Cyan",
+        egui::Color32::from_rgb(25, 200, 220),
+    ),
+    (
+        ScrapColor::Blue,
+        "Blue",
+        egui::Color32::from_rgb(38, 76, 240),
+    ),
+    (
+        ScrapColor::Purple,
+        "Purple",
+        egui::Color32::from_rgb(165, 25, 230),
+    ),
+    (
+        ScrapColor::Pink,
+        "Pink",
+        egui::Color32::from_rgb(240, 89, 190),
+    ),
 ];
 
 impl SandboxScene {
@@ -430,17 +462,12 @@ impl SandboxScene {
                                 let selected = contribution.get(color, shape);
                                 if have == 0 {
                                     ui.label(
-                                        egui::RichText::new("—")
-                                            .color(egui::Color32::DARK_GRAY),
+                                        egui::RichText::new("—").color(egui::Color32::DARK_GRAY),
                                     );
                                 } else {
                                     let val = contribution.get_mut(color, shape);
                                     let mut v = *val;
-                                    ui.add(
-                                        egui::DragValue::new(&mut v)
-                                            .range(0..=have)
-                                            .speed(0.1),
-                                    );
+                                    ui.add(egui::DragValue::new(&mut v).range(0..=have).speed(0.1));
                                     // Clamp in case inventory shrank (shouldn't happen here).
                                     *contribution.get_mut(color, shape) = v.min(have);
                                     let _ = selected; // silence unused warning
@@ -466,14 +493,13 @@ impl SandboxScene {
                 ui.add_space(4.0);
 
                 ui.horizontal(|ui| {
-                    let forge_btn = egui::Button::new(
-                        egui::RichText::new("Forge").color(egui::Color32::BLACK),
-                    )
-                    .fill(if total == GOAL {
-                        egui::Color32::from_rgb(230, 160, 32)
-                    } else {
-                        egui::Color32::from_gray(60)
-                    });
+                    let forge_btn =
+                        egui::Button::new(egui::RichText::new("Forge").color(egui::Color32::BLACK))
+                            .fill(if total == GOAL {
+                                egui::Color32::from_rgb(230, 160, 32)
+                            } else {
+                                egui::Color32::from_gray(60)
+                            });
 
                     if ui.add_enabled(total == GOAL, forge_btn).clicked() {
                         // Write back contribution first, then signal tick() to execute.
@@ -502,15 +528,13 @@ impl SandboxScene {
     fn draw_forge_result(&self, ctx: &egui::Context) {
         let (r, g, b, shape_pts) = {
             let part_ref = self.last_forged.borrow();
-            let Some(part) = part_ref.as_ref() else { return };
+            let Some(part) = part_ref.as_ref() else {
+                return;
+            };
             let [r, g, b] = part.avg_color;
             (r, g, b, part.shape.clone())
         };
-        let fill = egui::Color32::from_rgb(
-            (r * 255.0) as u8,
-            (g * 255.0) as u8,
-            (b * 255.0) as u8,
-        );
+        let fill = egui::Color32::from_rgb((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
 
         let frame = egui::Frame::window(&ctx.style())
             .fill(egui::Color32::from_rgba_premultiplied(10, 10, 10, 220))
@@ -531,10 +555,8 @@ impl SandboxScene {
                     );
                     ui.add_space(8.0);
                     // Polygon preview — render the actual mod part shape.
-                    let (rect, _) = ui.allocate_exact_size(
-                        egui::vec2(100.0, 100.0),
-                        egui::Sense::hover(),
-                    );
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(100.0, 100.0), egui::Sense::hover());
                     let center = rect.center();
                     // BASE_RADIUS in mod_part is 0.5; scale to fill ~80% of the preview box.
                     let scale = rect.width() * 0.80;
@@ -599,7 +621,11 @@ impl SandboxScene {
                 WeaponFiringState::Burst { .. } => egui::Color32::from_rgb(220, 120, 60),
                 WeaponFiringState::Reloading(_) => egui::Color32::from_rgb(160, 160, 220),
             };
-            (p.weapon.state.label(), color, p.weapon.state.remaining_secs())
+            (
+                p.weapon.state.label(),
+                color,
+                p.weapon.state.remaining_secs(),
+            )
         });
 
         if let Some((label, color, rem)) = state_display {
@@ -615,9 +641,17 @@ impl SandboxScene {
         ui.separator();
 
         let slow = self.slow_motion.get();
-        let btn_text = if slow { "⏸  Normal speed" } else { "🐢  Slow motion  (0.2×)" };
+        let btn_text = if slow {
+            "⏸  Normal speed"
+        } else {
+            "🐢  Slow motion  (0.2×)"
+        };
         let btn = egui::Button::new(btn_text);
-        let btn = if slow { btn.fill(egui::Color32::from_rgb(40, 120, 60)) } else { btn };
+        let btn = if slow {
+            btn.fill(egui::Color32::from_rgb(40, 120, 60))
+        } else {
+            btn
+        };
         if ui.add_sized([ui.available_width(), 24.0], btn).clicked() {
             self.slow_motion.set(!slow);
         }
@@ -640,7 +674,10 @@ impl SandboxScene {
                 ui.end_row();
 
                 ui.label("Projectiles");
-                ui.add(egui::Slider::new(&mut stats.projectiles_per_shot, 1u32..=16));
+                ui.add(egui::Slider::new(
+                    &mut stats.projectiles_per_shot,
+                    1u32..=16,
+                ));
                 ui.end_row();
 
                 ui.label("Shot arc");
@@ -731,7 +768,9 @@ impl SandboxScene {
 
         ui.separator();
         ui.label(
-            egui::RichText::new("LMB / Space to fire").small().color(egui::Color32::GRAY),
+            egui::RichText::new("LMB / Space to fire")
+                .small()
+                .color(egui::Color32::GRAY),
         );
     }
 
@@ -743,16 +782,26 @@ impl SandboxScene {
         ui.separator();
 
         if ui
-            .add_sized([ui.available_width(), 24.0], egui::Button::new("Spawn Dummy"))
+            .add_sized(
+                [ui.available_width(), 24.0],
+                egui::Button::new("Spawn Dummy"),
+            )
             .clicked()
         {
-            self.enemy_spawn_requests.set(self.enemy_spawn_requests.get() + 1);
+            self.enemy_spawn_requests
+                .set(self.enemy_spawn_requests.get() + 1);
         }
 
         let respawn_btn = egui::Button::new("Respawn P1");
-        let respawn_btn =
-            if player_dead { respawn_btn.fill(egui::Color32::from_rgb(180, 60, 60)) } else { respawn_btn };
-        if ui.add_sized([ui.available_width(), 24.0], respawn_btn).clicked() {
+        let respawn_btn = if player_dead {
+            respawn_btn.fill(egui::Color32::from_rgb(180, 60, 60))
+        } else {
+            respawn_btn
+        };
+        if ui
+            .add_sized([ui.available_width(), 24.0], respawn_btn)
+            .clicked()
+        {
             self.player_respawn_requested.set(true);
         }
     }
@@ -798,15 +847,13 @@ impl SandboxScene {
         ui.horizontal_wrapped(|ui| {
             for (color, name, egui_color) in COLORS {
                 let selected = self.spawn_color.get() == color;
-                let btn = egui::Button::new(
-                    egui::RichText::new(name).color(egui::Color32::BLACK),
-                )
-                .fill(egui_color)
-                .stroke(if selected {
-                    egui::Stroke::new(2.0, egui::Color32::WHITE)
-                } else {
-                    egui::Stroke::NONE
-                });
+                let btn = egui::Button::new(egui::RichText::new(name).color(egui::Color32::BLACK))
+                    .fill(egui_color)
+                    .stroke(if selected {
+                        egui::Stroke::new(2.0, egui::Color32::WHITE)
+                    } else {
+                        egui::Stroke::NONE
+                    });
                 if ui.add(btn).clicked() {
                     self.spawn_color.set(color);
                 }
@@ -830,7 +877,10 @@ impl SandboxScene {
         });
 
         if ui
-            .add_sized([ui.available_width(), 24.0], egui::Button::new("Spawn Scrap"))
+            .add_sized(
+                [ui.available_width(), 24.0],
+                egui::Button::new("Spawn Scrap"),
+            )
             .clicked()
         {
             self.scrap_spawn_request.set(true);

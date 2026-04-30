@@ -101,7 +101,10 @@ impl WeaponFiringState {
 
 impl Weapon {
     pub fn new(stats: WeaponStats) -> Self {
-        Self { stats, state: WeaponFiringState::Idle }
+        Self {
+            stats,
+            state: WeaponFiringState::Idle,
+        }
     }
 
     /// Advance the weapon state machine by `dt` seconds.
@@ -121,8 +124,7 @@ impl Weapon {
                             next_time: self.stats.burst_delay,
                         };
                     } else {
-                        self.state =
-                            WeaponFiringState::Cooldown(1.0 / self.stats.fire_rate);
+                        self.state = WeaponFiringState::Cooldown(1.0 / self.stats.fire_rate);
                     }
                 }
             }
@@ -146,14 +148,16 @@ impl Weapon {
                 }
             }
 
-            WeaponFiringState::Burst { ref mut remaining, ref mut next_time } => {
+            WeaponFiringState::Burst {
+                ref mut remaining,
+                ref mut next_time,
+            } => {
                 *next_time -= dt;
                 if *next_time <= 0.0 {
                     shots = 1;
                     *remaining -= 1;
                     if *remaining == 0 {
-                        self.state =
-                            WeaponFiringState::Cooldown(1.0 / self.stats.fire_rate);
+                        self.state = WeaponFiringState::Cooldown(1.0 / self.stats.fire_rate);
                     } else {
                         *next_time += self.stats.burst_delay;
                     }

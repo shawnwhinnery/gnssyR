@@ -22,13 +22,16 @@ fn approx_vec(a: Vec2, b: Vec2, eps: f32) -> bool {
 }
 
 // A SpyDriver that records which GraphicsDriver methods were called.
-use gfx::driver::{GraphicsDriver, MeshHandle, Vertex};
+use gfx::driver::{GraphicsDriver, MeshHandle, TextureHandle, Vertex};
 #[derive(Default)]
 struct SpyDriver {
     begin_frames: u32,
     end_frames: u32,
     upload_calls: u32,
     draw_calls: u32,
+    upload_texture_calls: u32,
+    free_texture_calls: u32,
+    draw_bitmap_calls: u32,
     last_transform: Option<Mat3>,
 }
 impl GraphicsDriver for SpyDriver {
@@ -47,6 +50,17 @@ impl GraphicsDriver for SpyDriver {
     }
     fn draw_mesh(&mut self, _: MeshHandle, transform: Mat3, _: [f32; 4]) {
         self.draw_calls += 1;
+        self.last_transform = Some(transform);
+    }
+    fn upload_texture(&mut self, _: &[u32], _: u32, _: u32) -> TextureHandle {
+        self.upload_texture_calls += 1;
+        self.upload_texture_calls as TextureHandle
+    }
+    fn free_texture(&mut self, _: TextureHandle) {
+        self.free_texture_calls += 1;
+    }
+    fn draw_bitmap(&mut self, _: TextureHandle, transform: Mat3, _: [f32; 4]) {
+        self.draw_bitmap_calls += 1;
         self.last_transform = Some(transform);
     }
     fn resize(&mut self, _: u32, _: u32) {}
@@ -571,4 +585,14 @@ fn path_offset_distance() {
         // The original line is y=0, x in [0,10], so distance from line = |op.y|.
         assert!(approx(op.y.abs(), 5.0, 0.5));
     }
+}
+
+#[test]
+fn texture_handle_independent_of_mesh() {
+    let mut spy = SpyDriver::default();
+    spy.begin_frame();
+    let mh = spy.upload_mesh(&[], &[]);
+    let th = spy.upload_texture(&[0xFF_FF_00_00], 1, 1);
+    assert_eq!(mh, 0);
+    assert_eq!(th, 1);
 }

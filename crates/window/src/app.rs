@@ -264,7 +264,11 @@ where
                     });
                 }
             }
-            WindowEvent::MouseInput { button: MouseButton::Left, state, .. } => {
+            WindowEvent::MouseInput {
+                button: MouseButton::Left,
+                state,
+                ..
+            } => {
                 self.pending_keys.push(InputEvent::Button {
                     player: PlayerId::P1,
                     button: Button::South,
@@ -349,9 +353,7 @@ where
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         // Feed the event to egui first; if it consumes it, skip game input.
-        if let (Some(egui_winit), Some(window)) =
-            (self.egui_winit.as_mut(), self.window.as_ref())
-        {
+        if let (Some(egui_winit), Some(window)) = (self.egui_winit.as_mut(), self.window.as_ref()) {
             let response = egui_winit.on_window_event(window, &event);
             if response.consumed {
                 // Still handle structural events even when egui consumed input.
@@ -403,7 +405,11 @@ where
                     });
                 }
             }
-            WindowEvent::MouseInput { button: MouseButton::Left, state, .. } => {
+            WindowEvent::MouseInput {
+                button: MouseButton::Left,
+                state,
+                ..
+            } => {
                 self.pending_keys.push(InputEvent::Button {
                     player: PlayerId::P1,
                     button: Button::South,

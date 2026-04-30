@@ -1,5 +1,6 @@
-use gfx::driver::{GraphicsDriver, MeshHandle, Vertex};
+use gfx::driver::{GraphicsDriver, MeshHandle, TextureHandle, Vertex};
 use glam::Mat3;
+use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // Mesh pool
@@ -12,6 +13,18 @@ struct StoredMesh {
 
 struct DrawCall {
     handle: MeshHandle,
+    transform: Mat3,
+    tint: [f32; 4],
+}
+
+struct SoftwareTexture {
+    pixels: Vec<u32>,
+    width: u32,
+    height: u32,
+}
+
+struct TexturedDrawCall {
+    handle: TextureHandle,
     transform: Mat3,
     tint: [f32; 4],
 }
@@ -31,6 +44,9 @@ pub struct SoftwareDriver {
     clear_color: u32,
     meshes: Vec<StoredMesh>,
     draw_calls: Vec<DrawCall>,
+    textures: HashMap<TextureHandle, SoftwareTexture>,
+    next_texture_id: TextureHandle,
+    textured_draw_calls: Vec<TexturedDrawCall>,
 }
 
 impl SoftwareDriver {
@@ -43,6 +59,9 @@ impl SoftwareDriver {
             clear_color: 0,
             meshes: Vec::new(),
             draw_calls: Vec::new(),
+            textures: HashMap::new(),
+            next_texture_id: 1,
+            textured_draw_calls: Vec::new(),
         }
     }
 
@@ -88,14 +107,16 @@ impl GraphicsDriver for SoftwareDriver {
     fn begin_frame(&mut self) {
         self.meshes.clear();
         self.draw_calls.clear();
+        self.textured_draw_calls.clear();
     }
 
     fn end_frame(&mut self) {
         // Apply the clear colour first.
         self.pixels.fill(self.clear_color);
 
-        // Rasterise each recorded draw call.
         let proj = aspect_projection(self.width, self.height);
+
+        // Vector meshes (replace pixels under triangles).
         for draw in &self.draw_calls {
             if let Some(mesh) = self.meshes.get(draw.handle as usize) {
                 crate::raster::rasterize(
@@ -108,6 +129,23 @@ impl GraphicsDriver for SoftwareDriver {
                     draw.tint,
                 );
             }
+        }
+
+        // Bitmaps (alpha-composite over existing pixels).
+        for draw in &self.textured_draw_calls {
+            let Some(tex) = self.textures.get(&draw.handle) else {
+                continue;
+            };
+            crate::raster::raster_bitmap(
+                &mut self.pixels,
+                self.width,
+                self.height,
+                &tex.pixels,
+                tex.width,
+                tex.height,
+                proj * draw.transform,
+                draw.tint,
+            );
         }
     }
 
@@ -131,6 +169,35 @@ impl GraphicsDriver for SoftwareDriver {
             handle: mesh,
             transform,
             tint: color,
+        });
+    }
+
+    fn upload_texture(&mut self, pixels: &[u32], width: u32, height: u32) -> TextureHandle {
+        if width == 0 || height == 0 || pixels.len() != (width * height) as usize {
+            return 0;
+        }
+        let id = self.next_texture_id;
+        self.next_texture_id = self.next_texture_id.saturating_add(1).max(1);
+        self.textures.insert(
+            id,
+            SoftwareTexture {
+                pixels: pixels.to_vec(),
+                width,
+                height,
+            },
+        );
+        id
+    }
+
+    fn free_texture(&mut self, handle: TextureHandle) {
+        self.textures.remove(&handle);
+    }
+
+    fn draw_bitmap(&mut self, texture: TextureHandle, transform: Mat3, tint: [f32; 4]) {
+        self.textured_draw_calls.push(TexturedDrawCall {
+            handle: texture,
+            transform,
+            tint,
         });
     }
 
