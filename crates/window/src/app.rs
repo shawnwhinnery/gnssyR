@@ -187,6 +187,7 @@ fn translate_key(key: PhysicalKey) -> Option<Button> {
         KeyCode::KeyD | KeyCode::ArrowRight => Button::DPadRight,
         KeyCode::Space => Button::South,
         KeyCode::Escape => Button::Key(input::event::KeyCode::Escape),
+        KeyCode::KeyE => Button::Key(input::event::KeyCode::E),
         _ => return None,
     })
 }

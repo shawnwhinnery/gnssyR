@@ -80,5 +80,6 @@ pub enum KeyCode {
     Space,
     Enter,
     Escape,
+    E,
     // Extend as needed
 }

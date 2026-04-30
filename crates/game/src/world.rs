@@ -9,6 +9,7 @@ use crate::{
     enemy::{dummy::Dummy, Enemy, LootTable},
     hud,
     input::InputState,
+    npc::{forgemaster::Forgemaster, FriendlyNpc, NpcKind},
     player::{draw_players, Player, PLAYER_RADIUS},
     scrap::{draw_scrap, Inventory, Scrap, ScrapColor, ScrapShape},
     weapon::{Projectile, ProjectileOwner},
@@ -41,6 +42,7 @@ pub struct World {
     pub physics: PhysicsWorld,
     pub players: Vec<Player>,
     pub enemies: Vec<Box<dyn Enemy>>,
+    pub npcs: Vec<Box<dyn FriendlyNpc>>,
     pub walls: Vec<Wall>,
     pub projectiles: Vec<Projectile>,
     pub scraps: Vec<Scrap>,
@@ -63,6 +65,7 @@ impl World {
             physics: PhysicsWorld::new(),
             players: Vec::new(),
             enemies: Vec::new(),
+            npcs: Vec::new(),
             walls: Vec::new(),
             projectiles: Vec::new(),
             scraps: Vec::new(),
@@ -96,6 +99,29 @@ impl World {
     pub fn spawn_enemy(&mut self, pos: Vec2) {
         let enemy = Dummy::new(pos, &mut self.physics);
         self.enemies.push(Box::new(enemy));
+    }
+
+    pub fn spawn_forgemaster(&mut self, pos: Vec2) {
+        self.npcs.push(Box::new(Forgemaster::new(pos, &mut self.physics)));
+    }
+
+    /// Spawn a scrap directly into the world at the given position.
+    pub fn spawn_scrap(&mut self, pos: Vec2, color: ScrapColor, shape: ScrapShape) {
+        self.scraps.push(Scrap { position: pos, color, shape });
+    }
+
+    /// Return the kind of the nearest friendly NPC within interaction range of P1, if any.
+    pub fn nearest_interactable_npc(&self) -> Option<NpcKind> {
+        let player_pos = self.players.first().map(|p| self.physics.body(p.body).position)?;
+        self.npcs
+            .iter()
+            .filter_map(|npc| {
+                let npc_pos = self.physics.body(npc.body()).position;
+                let dist = player_pos.distance(npc_pos);
+                if dist <= npc.interaction_radius() { Some((dist, npc.kind())) } else { None }
+            })
+            .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(_, kind)| kind)
     }
 
     pub fn respawn_player(&mut self, slot: usize) {
@@ -278,6 +304,9 @@ impl World {
         let _elapsed = self.start.elapsed().as_secs_f32();
         driver.clear(GROUND_COLOR);
         draw_walls(&self.walls, &self.physics, driver, &self.camera);
+        for npc in &self.npcs {
+            npc.draw(&self.physics, driver, &self.camera);
+        }
         for scrap in &self.scraps {
             draw_scrap(scrap, driver, &self.camera);
         }

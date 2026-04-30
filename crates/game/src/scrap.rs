@@ -56,13 +56,55 @@ impl ScrapColor {
 pub enum ScrapShape {
     Diamond,
     Circle,
-    Square,
+    Crescent,
     Triangle,
 }
 
 impl ScrapShape {
     pub const ALL: [ScrapShape; NUM_SHAPES] =
-        [ScrapShape::Diamond, ScrapShape::Circle, ScrapShape::Square, ScrapShape::Triangle];
+        [ScrapShape::Diamond, ScrapShape::Circle, ScrapShape::Crescent, ScrapShape::Triangle];
+}
+
+/// Crescent polygon vertices centered at the origin with the given radius.
+///
+/// Two-circle construction:
+///   Outer circle: radius `r`, centered at origin (provides the convex back)
+///   Inner circle: radius `0.75 * r`, centered at `(0.35 * r, 0)` (cuts the concave bite)
+/// The crescent body is on the left; the concave opening faces right.
+pub fn crescent_verts(r: f32) -> Vec<Vec2> {
+    const INNER_SCALE: f32 = 0.75;
+    const INNER_SHIFT: f32 = 0.35;
+    const SEGS: usize = 10;
+
+    let inner_r = r * INNER_SCALE;
+    let inner_cx = r * INNER_SHIFT;
+
+    // x-coordinate of the intersection of the two circles
+    let xi = (r * r - inner_r * inner_r + inner_cx * inner_cx) / (2.0 * inner_cx);
+    let yi = (r * r - xi * xi).max(0.0).sqrt();
+
+    let outer_angle = yi.atan2(xi);
+    let inner_angle = yi.atan2(xi - inner_cx);
+    let outer_sweep = std::f32::consts::TAU - 2.0 * outer_angle;
+
+    let mut pts = Vec::with_capacity(2 * SEGS);
+
+    // Outer arc: +outer_angle → CCW sweep → -outer_angle  (the convex left side)
+    for i in 0..=SEGS {
+        let t = i as f32 / SEGS as f32;
+        let a = outer_angle + outer_sweep * t;
+        pts.push(Vec2::new(a.cos() * r, a.sin() * r));
+    }
+
+    // Inner arc: -inner_angle → CCW → +inner_angle  (the concave right side)
+    // Skip endpoints — they duplicate the outer arc's start/end.
+    for i in 1..SEGS {
+        let t = i as f32 / SEGS as f32;
+        let a = -inner_angle + 2.0 * inner_angle * t;
+        pts.push(Vec2::new(inner_cx + a.cos() * inner_r, a.sin() * inner_r));
+    }
+
+    pts
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +141,11 @@ impl Inventory {
 
     pub fn count(&self, color: ScrapColor, shape: ScrapShape) -> u16 {
         self.counts[color as usize * NUM_SHAPES + shape as usize]
+    }
+
+    pub fn remove(&mut self, color: ScrapColor, shape: ScrapShape, amount: u16) {
+        let i = color as usize * NUM_SHAPES + shape as usize;
+        self.counts[i] = self.counts[i].saturating_sub(amount);
     }
 
     pub fn count_shape(&self, shape: ScrapShape) -> u32 {
@@ -148,13 +195,9 @@ pub fn draw_scrap(scrap: &Scrap, driver: &mut dyn gfx::GraphicsDriver, camera: &
             polygon(&verts)
         }
         ScrapShape::Circle => circle(ndc, r),
-        ScrapShape::Square => {
-            let verts = [
-                ndc + Vec2::new(-r, -r),
-                ndc + Vec2::new(r, -r),
-                ndc + Vec2::new(r, r),
-                ndc + Vec2::new(-r, r),
-            ];
+        ScrapShape::Crescent => {
+            let raw = crescent_verts(r);
+            let verts: Vec<Vec2> = raw.iter().map(|v| ndc + *v).collect();
             polygon(&verts)
         }
         ScrapShape::Triangle => {
