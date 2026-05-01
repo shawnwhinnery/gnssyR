@@ -4,6 +4,7 @@ use physics::{Body, Collider, PhysicsWorld};
 use crate::{
     actor::{draw_shape, Actor, ActorCore},
     camera::Camera,
+    physics_layers,
 };
 use gfx::{
     shape::polygon,
@@ -24,11 +25,14 @@ pub struct Forgemaster {
 
 impl Forgemaster {
     pub fn new(pos: Vec2, physics: &mut PhysicsWorld) -> Self {
+        let (collision_layers, collision_mask) = physics_layers::npc_collision();
         let body = physics.add_body(Body {
             position: pos,
             velocity: Vec2::ZERO,
             mass: f32::INFINITY,
             restitution: 0.0,
+            collision_layers,
+            collision_mask,
             collider: Collider::Circle {
                 radius: FORGEMASTER_RADIUS,
             },

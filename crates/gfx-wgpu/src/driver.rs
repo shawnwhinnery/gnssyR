@@ -2,6 +2,7 @@ use crate::buffer::MeshPool;
 use crate::pipeline::FillPipeline;
 use crate::texture_store::TextureStore;
 use crate::textured_pipeline::{TexturedPipeline, TexturedVertex};
+use gfx::aspect_projection;
 use gfx::driver::{GraphicsDriver, MeshHandle, TextureHandle, Vertex};
 use glam::Mat3;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
@@ -194,24 +195,6 @@ impl WgpuDriver {
             egui_renderer,
             pending_egui: None,
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Aspect-ratio projection
-// ---------------------------------------------------------------------------
-
-/// Returns a scale matrix that maps logical square space (-1..1 × -1..1) to
-/// a centered square viewport inside the actual (possibly non-square) surface.
-fn aspect_projection(width: u32, height: u32) -> Mat3 {
-    let w = width as f32;
-    let h = height as f32;
-    if w > h {
-        Mat3::from_scale(glam::Vec2::new(h / w, 1.0))
-    } else if h > w {
-        Mat3::from_scale(glam::Vec2::new(1.0, w / h))
-    } else {
-        Mat3::IDENTITY
     }
 }
 

@@ -4,7 +4,8 @@ use physics::{Body, Collider, PhysicsWorld};
 use crate::{
     actor::{draw_shape, Actor, ActorCore},
     camera::Camera,
-    weapon::{Weapon, WeaponStats},
+    physics_layers,
+    weapon::{ProjectileBehavior, Weapon, WeaponStats},
 };
 use gfx::{
     shape::polygon,
@@ -29,11 +30,14 @@ pub struct Dummy {
 
 impl Dummy {
     pub fn new(pos: Vec2, physics: &mut PhysicsWorld) -> Self {
+        let (collision_layers, collision_mask) = physics_layers::enemy_collision();
         let body = physics.add_body(Body {
             position: pos,
             velocity: Vec2::ZERO,
             mass: 1.0,
             restitution: 0.2,
+            collision_layers,
+            collision_mask,
             collider: Collider::Circle {
                 radius: DUMMY_RADIUS,
             },
@@ -49,12 +53,14 @@ impl Dummy {
                 burst_count: 1,
                 burst_delay: 0.05,
                 jitter: 0.08,
+                kickback: 0.0,
                 projectile_speed: 8.0,
                 projectile_size: 0.10,
                 projectile_lifetime: 3.0,
                 piercing: 0,
                 damage_total: 1.0,
                 recoil_force: 0.0,
+                ..WeaponStats::default()
             }),
         }
     }
@@ -116,6 +122,10 @@ impl Enemy for Dummy {
 
     fn weapon_stats(&self) -> &WeaponStats {
         &self.weapon.stats
+    }
+
+    fn projectile_behavior(&self) -> ProjectileBehavior {
+        self.weapon.projectile_behavior
     }
 
     fn loot_table(&self) -> LootTable {

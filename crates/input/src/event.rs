@@ -19,7 +19,11 @@ pub enum InputEvent {
     },
     /// Mouse cursor moved (screen-space delta).
     MouseMove { dx: f32, dy: f32 },
-    /// Mouse cursor absolute position in NDC ([-1.0, 1.0], Y-up, origin at window centre).
+    /// Mouse cursor absolute position in **logical** NDC ([-1.0, 1.0], Y-up,
+    /// origin at window centre): the coordinate system used for vector paths
+    /// before the graphics drivers apply per-surface aspect correction. Window
+    /// integration maps pointer pixels into this space so it matches drawn
+    /// geometry and gameplay aim on non-square viewports.
     CursorMoved { x: f32, y: f32 },
     /// A gamepad connected.
     GamepadConnected(PlayerId),

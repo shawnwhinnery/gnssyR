@@ -39,11 +39,14 @@ fn rect(hw: f32, hh: f32) -> Vec<Vec2> {
 }
 
 fn static_wall(position: Vec2, collider: Collider) -> Body {
+    let (collision_layers, collision_mask) = crate::physics_layers::wall_collision();
     Body {
         position,
         velocity: Vec2::ZERO,
         mass: f32::INFINITY,
         restitution: 0.3,
+        collision_layers,
+        collision_mask,
         collider,
     }
 }

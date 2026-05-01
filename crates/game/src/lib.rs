@@ -6,6 +6,7 @@ pub mod input;
 pub mod mod_part;
 pub mod mode;
 pub mod npc;
+pub mod physics_layers;
 pub mod pause;
 pub mod player;
 pub mod scenes;

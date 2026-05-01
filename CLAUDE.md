@@ -13,9 +13,9 @@ See [crates/index.md](crates/index.md) for a one-line summary of every crate.
 | Graphics abstraction | `gfx` |
 | Graphics backends | `gfx-wgpu` (GPU/production), `gfx-software` (CPU/headless) |
 | Input | `input` |
-| Physics | `physics` (pure-math 2D rigid-body simulation, SAT narrowphase, impulse-based resolution) |
+| Physics | `physics` (2D rigid-body simulation, SAT narrowphase, impulse resolution, **collision layer** filtering on `Body`; **`PhysicsWorld::try_body`** for safe handle reads after removal) |
 | App loop | `window` |
-| Game logic | `game` (placeholder) |
+| Game logic | `game` | Couch co-op: `World`, `SandboxScene`, `Weapon` / `ProjectileBehavior` / `Projectile`, `physics_layers` on `physics::Body`. |
 | UI | egui 0.29 (immediate-mode, rendered by `gfx-wgpu` on top of game content) |
 
 ## Workflow

@@ -1,6 +1,6 @@
 use glam::{Mat3, Vec2};
 use input::InputEvent;
-use physics::{Body, BodyHandle, Collider, Contact, PhysicsWorld};
+use physics::{narrow, Body, BodyHandle, Collider, Contact, PhysicsWorld};
 
 use rand::Rng;
 
@@ -11,9 +11,13 @@ use crate::{
     hud,
     input::InputState,
     npc::{forgemaster::Forgemaster, FriendlyNpc, NpcKind},
+    physics_layers,
     player::{Player, PLAYER_RADIUS},
     scrap::{draw_scrap, Inventory, Scrap, ScrapColor, ScrapShape},
-    weapon::{Projectile, ProjectileOwner},
+    weapon::{
+        perp, rotate, Projectile, ProjectileBehavior, ProjectileMotion, ProjectileOwner,
+        ProjectilePhysicsState, ProjectileScriptedState, WeaponStats,
+    },
 };
 use gfx::{
     shape::{circle, line, polygon},
@@ -24,6 +28,14 @@ use gfx::{
 pub const GROUND_COLOR: [f32; 4] = [0.13, 0.14, 0.12, 1.0];
 
 const SPAWN_OFFSET: f32 = PLAYER_RADIUS + 0.05;
+
+struct ProjectileSpawnBatch {
+    origin: Vec2,
+    dirs: Vec<Vec2>,
+    owner: ProjectileOwner,
+    stats: WeaponStats,
+    behavior: ProjectileBehavior,
+}
 
 // ---------------------------------------------------------------------------
 // Wall
@@ -168,9 +180,8 @@ impl World {
         self.input_state.apply_events(events, self.cursor_ndc);
         let snapshot = self.input_state.snapshot();
 
-        // ── player input → spawn requests ────────────────────────────────────
-        let mut spawn_requests: Vec<(Vec2, Vec<Vec2>, ProjectileOwner, f32, f32, f32, f32, u32)> =
-            Vec::new();
+        // ── player input → spawn batches ───────────────────────────────────────
+        let mut spawn_batches: Vec<ProjectileSpawnBatch> = Vec::new();
 
         for player in &mut self.players {
             if player.health <= 0.0 {
@@ -201,23 +212,21 @@ impl World {
             if volleys > 0 {
                 let pos = self.physics.body(player.actor.body).position;
                 let dirs = player.weapon.volley_directions(player.actor.facing);
-                let s = &player.weapon.stats;
-                spawn_requests.push((
-                    pos,
+                let stats = player.weapon.stats.clone();
+                let behavior = player.weapon.projectile_behavior;
+                spawn_batches.push(ProjectileSpawnBatch {
+                    origin: pos,
                     dirs,
-                    ProjectileOwner::Player(player.slot),
-                    s.projectile_speed,
-                    s.projectile_size,
-                    s.projectile_lifetime,
-                    s.damage_total,
-                    s.piercing,
-                ));
+                    owner: ProjectileOwner::Player(player.slot),
+                    stats,
+                    behavior,
+                });
                 let recoil = -player.actor.facing * player.weapon.stats.recoil_force;
                 self.physics.body_mut(player.actor.body).velocity += recoil;
             }
         }
 
-        // ── enemy AI → spawn requests ─────────────────────────────────────────
+        // ── enemy AI → spawn batches ─────────────────────────────────────────
         let player_positions: Vec<Vec2> = self
             .players
             .iter()
@@ -225,62 +234,101 @@ impl World {
             .map(|p| self.physics.body(p.actor.body).position)
             .collect();
 
-        let mut enemy_results: Vec<(Vec<(Vec2, Vec<Vec2>)>, f32, f32, f32, f32, u32)> = Vec::new();
         for enemy in &mut self.enemies {
             if !enemy.is_alive() {
                 self.physics.body_mut(enemy.body()).velocity = Vec2::ZERO;
                 continue;
             }
             let volleys = enemy.tick_ai(dt, &player_positions, &mut self.physics);
-            let s = enemy.weapon_stats();
-            enemy_results.push((
-                volleys,
-                s.projectile_speed,
-                s.projectile_size,
-                s.projectile_lifetime,
-                s.damage_total,
-                s.piercing,
-            ));
-        }
-        for (volleys, speed, size, lifetime, damage, piercing) in enemy_results {
+            let stats = enemy.weapon_stats().clone();
+            let behavior = enemy.projectile_behavior();
             for (origin, dirs) in volleys {
-                for dir in dirs {
-                    spawn_requests.push((
-                        origin,
-                        vec![dir],
-                        ProjectileOwner::Enemy,
-                        speed,
-                        size,
-                        lifetime,
-                        damage,
-                        piercing,
-                    ));
-                }
+                spawn_batches.push(ProjectileSpawnBatch {
+                    origin,
+                    dirs,
+                    owner: ProjectileOwner::Enemy,
+                    stats: stats.clone(),
+                    behavior,
+                });
             }
         }
 
-        // ── spawn all projectiles ─────────────────────────────────────────────
-        for (origin, dirs, owner, speed, size, lifetime, damage, piercing) in spawn_requests {
-            for dir in dirs {
-                let handle = self.physics.add_body(Body {
-                    position: origin + dir * (SPAWN_OFFSET + size),
-                    velocity: dir * speed,
-                    mass: 0.01,
-                    restitution: 0.0,
-                    collider: Collider::Circle { radius: size },
-                });
-                self.projectiles.push(Projectile {
-                    body: handle,
-                    owner,
-                    lifetime,
-                    piercing,
-                    size,
-                    damage,
-                });
+        let player_targets: Vec<(BodyHandle, usize, Vec2)> = self
+            .players
+            .iter()
+            .filter(|p| p.health > 0.0)
+            .map(|p| {
+                let h = p.actor.body;
+                let pos = self.physics.body(h).position;
+                (h, p.slot, pos)
+            })
+            .collect();
+        let enemy_targets: Vec<(BodyHandle, Vec2)> = self
+            .enemies
+            .iter()
+            .filter(|e| e.is_alive())
+            .map(|e| {
+                let h = e.body();
+                let pos = self.physics.body(h).position;
+                (h, pos)
+            })
+            .collect();
+
+        for batch in spawn_batches {
+            for dir in batch.dirs {
+                spawn_one_projectile(
+                    &mut self.physics,
+                    &mut self.projectiles,
+                    batch.origin,
+                    dir,
+                    batch.owner,
+                    &batch.stats,
+                    batch.behavior,
+                    &player_targets,
+                    &enemy_targets,
+                );
             }
         }
 
         self.physics.step(dt);
+
+        apply_physics_projectile_friction_and_min_speed(&mut self.projectiles, &mut self.physics, dt);
+        update_physics_projectile_wall_bounces(
+            &mut self.projectiles,
+            &self.walls,
+            &self.physics.contacts(),
+        );
+
+        let enemy_targets_now: Vec<(BodyHandle, Vec2)> = self
+            .enemies
+            .iter()
+            .filter(|e| e.is_alive())
+            .filter_map(|e| {
+                let h = e.body();
+                self.physics
+                    .try_body(h)
+                    .map(|b| (h, b.position))
+            })
+            .collect();
+        let player_targets_now: Vec<(BodyHandle, usize, Vec2)> = self
+            .players
+            .iter()
+            .filter(|p| p.health > 0.0)
+            .filter_map(|p| {
+                let h = p.actor.body;
+                self.physics
+                    .try_body(h)
+                    .map(|b| (h, p.slot, b.position))
+            })
+            .collect();
+
+        integrate_scripted_projectiles(
+            &mut self.projectiles,
+            dt,
+            &self.physics,
+            &enemy_targets_now,
+            &player_targets_now,
+        );
 
         let live_positions: Vec<Vec2> = self
             .players
@@ -308,6 +356,7 @@ impl World {
             &player_bodies,
             &enemy_bodies,
             &contacts,
+            &self.physics,
             &mut self.players,
             &mut self.enemies,
         );
@@ -320,14 +369,14 @@ impl World {
             &self.players,
             &self.physics,
         );
-        let player_body_handles: Vec<BodyHandle> =
-            self.players.iter().map(|p| p.actor.body).collect();
+        let enemy_bodies_live: Vec<BodyHandle> =
+            self.enemies.iter().map(|e| e.body()).collect();
         cleanup_projectiles(
             &mut self.projectiles,
             &mut self.physics,
             &self.walls,
-            &enemy_bodies,
-            &player_body_handles,
+            &enemy_bodies_live,
+            &player_bodies,
         );
     }
 
@@ -393,6 +442,321 @@ impl Default for World {
 }
 
 // ---------------------------------------------------------------------------
+// Projectile spawn & integration
+// ---------------------------------------------------------------------------
+
+fn rotate_toward(current: Vec2, target: Vec2, max_angle: f32) -> Vec2 {
+    let c = current.normalize_or_zero();
+    if c.length_squared() < 1e-12 {
+        return target.normalize_or_zero();
+    }
+    let t = target.normalize_or_zero();
+    if t.length_squared() < 1e-12 {
+        return c;
+    }
+    let cross = c.x * t.y - c.y * t.x;
+    let dot = c.dot(t).clamp(-1.0, 1.0);
+    let angle = cross.atan2(dot);
+    let step = angle.clamp(-max_angle, max_angle);
+    rotate(c, step).normalize_or_zero()
+}
+
+fn acquire_nearest_enemy(from: Vec2, enemies: &[(BodyHandle, Vec2)]) -> Option<BodyHandle> {
+    enemies
+        .iter()
+        .filter_map(|&(h, p)| {
+            let d2 = p.distance_squared(from);
+            if d2 < 1e-10 {
+                return None;
+            }
+            Some((d2.sqrt(), h))
+        })
+        .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(_, h)| h)
+}
+
+fn acquire_seek_target_player(
+    from: Vec2,
+    forward: Vec2,
+    half_angle: f32,
+    enemies: &[(BodyHandle, Vec2)],
+) -> Option<BodyHandle> {
+    let f = forward.normalize_or_zero();
+    if f.length_squared() < 1e-8 {
+        return acquire_nearest_enemy(from, enemies);
+    }
+    let cos_lim = half_angle.cos();
+    let mut best_cone: Option<(f32, BodyHandle)> = None;
+    for &(h, p) in enemies {
+        let v = p - from;
+        let d2 = v.length_squared();
+        if d2 < 1e-10 {
+            continue;
+        }
+        let d = d2.sqrt();
+        let n = v / d;
+        if n.dot(f) >= cos_lim {
+            if best_cone.map_or(true, |(bd, _)| d < bd) {
+                best_cone = Some((d, h));
+            }
+        }
+    }
+    if let Some((_, h)) = best_cone {
+        return Some(h);
+    }
+    acquire_nearest_enemy(from, enemies)
+}
+
+fn acquire_seek_target_enemy(from: Vec2, players: &[(BodyHandle, usize, Vec2)]) -> Option<BodyHandle> {
+    players
+        .iter()
+        .filter_map(|&(h, _slot, p)| {
+            let d2 = p.distance_squared(from);
+            if d2 < 1e-10 {
+                return None;
+            }
+            Some((d2.sqrt(), h))
+        })
+        .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(_, h)| h)
+}
+
+fn spawn_one_projectile(
+    physics: &mut PhysicsWorld,
+    projectiles: &mut Vec<Projectile>,
+    origin: Vec2,
+    dir_volley: Vec2,
+    owner: ProjectileOwner,
+    stats: &WeaponStats,
+    behavior: ProjectileBehavior,
+    player_targets: &[(BodyHandle, usize, Vec2)],
+    enemy_targets: &[(BodyHandle, Vec2)],
+) {
+    let size = stats.projectile_size;
+    let aim = if dir_volley.length_squared() > 1e-8 {
+        dir_volley.normalize()
+    } else {
+        Vec2::X
+    };
+    let muzzle = origin + aim * (SPAWN_OFFSET + size);
+
+    let lifetime = stats.projectile_lifetime;
+    let piercing = stats.piercing;
+    let damage = stats.damage_total;
+    let collider = Collider::Circle { radius: size };
+
+    match behavior {
+        ProjectileBehavior::Physics => {
+            let (collision_layers, collision_mask) = match owner {
+                ProjectileOwner::Player(_) => physics_layers::projectile_player_owned(),
+                ProjectileOwner::Enemy => physics_layers::projectile_enemy_owned(),
+            };
+            let handle = physics.add_body(Body {
+                position: muzzle,
+                velocity: aim * stats.projectile_speed,
+                mass: 0.01,
+                restitution: 0.82,
+                collision_layers,
+                collision_mask,
+                collider,
+            });
+            projectiles.push(Projectile {
+                motion: ProjectileMotion::Physics(ProjectilePhysicsState {
+                    body: handle,
+                    bounce_count: 0,
+                    was_touching_wall: false,
+                }),
+                owner,
+                lifetime,
+                piercing,
+                size,
+                damage,
+                stats: stats.clone(),
+            });
+        }
+        ProjectileBehavior::Bullet
+        | ProjectileBehavior::Rocket
+        | ProjectileBehavior::Oscillating
+        | ProjectileBehavior::Seeking => {
+            let speed = stats.projectile_speed;
+            let seek_target = if behavior == ProjectileBehavior::Seeking {
+                match owner {
+                    ProjectileOwner::Player(_) => acquire_seek_target_player(
+                        muzzle,
+                        aim,
+                        stats.seeking_acquire_half_angle,
+                        enemy_targets,
+                    ),
+                    ProjectileOwner::Enemy => acquire_seek_target_enemy(muzzle, player_targets),
+                }
+            } else {
+                None
+            };
+            let st = ProjectileScriptedState {
+                position: muzzle,
+                dir: aim,
+                speed,
+                phase_time: 0.0,
+                distance_along: 0.0,
+                anchor: muzzle,
+                last_enemy_body: None,
+                last_player_slot: None,
+                seek_target,
+            };
+            projectiles.push(Projectile {
+                motion: ProjectileMotion::Scripted {
+                    behavior,
+                    state: st,
+                },
+                owner,
+                lifetime,
+                piercing,
+                size,
+                damage,
+                stats: stats.clone(),
+            });
+        }
+    }
+}
+
+fn integrate_scripted_projectiles(
+    projectiles: &mut [Projectile],
+    dt: f32,
+    physics: &PhysicsWorld,
+    enemy_targets: &[(BodyHandle, Vec2)],
+    player_targets: &[(BodyHandle, usize, Vec2)],
+) {
+    use std::f32::consts::TAU;
+    for proj in projectiles.iter_mut() {
+        let ProjectileMotion::Scripted {
+            behavior,
+            state,
+        } = &mut proj.motion
+        else {
+            continue;
+        };
+        let stats = &proj.stats;
+        match *behavior {
+            ProjectileBehavior::Bullet => {
+                state.position += state.dir * state.speed * dt;
+            }
+            ProjectileBehavior::Rocket => {
+                state.speed += stats.rocket_acceleration * dt;
+                state.position += state.dir * state.speed * dt;
+            }
+            ProjectileBehavior::Oscillating => {
+                state.phase_time += dt;
+                state.distance_along += stats.projectile_speed * dt;
+                let lateral = perp(state.dir)
+                    * stats.oscillation_magnitude
+                    * (TAU * stats.oscillation_frequency * state.phase_time).sin();
+                state.position = state.anchor + state.dir * state.distance_along + lateral;
+            }
+            ProjectileBehavior::Seeking => {
+                let turn_radius = stats.seeking_turn_radius.max(0.05);
+                let w_max = state.speed / turn_radius;
+                let max_turn = w_max * dt;
+
+                let mut target_pos: Option<Vec2> = None;
+                if let Some(th) = state.seek_target {
+                    if let Some(tb) = physics.try_body(th) {
+                        target_pos = Some(tb.position);
+                    } else {
+                        state.seek_target = None;
+                    }
+                }
+                if target_pos.is_none() {
+                    state.seek_target = match proj.owner {
+                        ProjectileOwner::Player(_) => acquire_seek_target_player(
+                            state.position,
+                            state.dir,
+                            stats.seeking_acquire_half_angle,
+                            enemy_targets,
+                        ),
+                        ProjectileOwner::Enemy => {
+                            acquire_seek_target_enemy(state.position, player_targets)
+                        }
+                    };
+                    if let Some(th) = state.seek_target {
+                        target_pos = physics.try_body(th).map(|b| b.position);
+                    }
+                }
+                if let Some(tp) = target_pos {
+                    let to = tp - state.position;
+                    if to.length_squared() > 1e-10 {
+                        let want = to.normalize();
+                        state.dir = rotate_toward(state.dir, want, max_turn);
+                    }
+                }
+                state.position += state.dir * state.speed * dt;
+            }
+            ProjectileBehavior::Physics => {}
+        }
+    }
+}
+
+fn apply_physics_projectile_friction_and_min_speed(
+    projectiles: &mut [Projectile],
+    physics: &mut PhysicsWorld,
+    dt: f32,
+) {
+    for proj in projectiles.iter_mut() {
+        let ProjectileMotion::Physics(phys) = &mut proj.motion else {
+            continue;
+        };
+        let stats = &proj.stats;
+        let b = physics.body_mut(phys.body);
+        let k = stats.physics_friction.max(0.0);
+        b.velocity *= (-k * dt).exp();
+        let s = b.velocity.length();
+        if s < stats.physics_min_speed {
+            proj.lifetime = 0.0;
+        }
+    }
+}
+
+fn update_physics_projectile_wall_bounces(
+    projectiles: &mut [Projectile],
+    walls: &[Wall],
+    contacts: &[(BodyHandle, BodyHandle, Contact)],
+) {
+    let wall_handles: std::collections::HashSet<BodyHandle> =
+        walls.iter().map(|w| w.body).collect();
+    for proj in projectiles.iter_mut() {
+        let ProjectileMotion::Physics(phys) = &mut proj.motion else {
+            continue;
+        };
+        let max_b = proj.stats.physics_max_bounces;
+        let touching = contacts.iter().any(|(a, b, _)| {
+            let involves_proj = *a == phys.body || *b == phys.body;
+            let involves_wall = wall_handles.contains(a) || wall_handles.contains(b);
+            involves_proj && involves_wall
+        });
+        if max_b == 0 {
+            phys.was_touching_wall = touching;
+            continue;
+        }
+        if touching && !phys.was_touching_wall {
+            phys.bounce_count = phys.bounce_count.saturating_add(1);
+            if phys.bounce_count >= max_b {
+                proj.lifetime = 0.0;
+            }
+        }
+        phys.was_touching_wall = touching;
+    }
+}
+
+fn circle_overlaps_body(proj_pos: Vec2, radius: f32, body: &Body) -> bool {
+    narrow::detect(
+        proj_pos,
+        &Collider::Circle { radius },
+        body.position,
+        &body.collider,
+    )
+    .is_some()
+}
+
+// ---------------------------------------------------------------------------
 // Damage resolution
 // ---------------------------------------------------------------------------
 
@@ -401,31 +765,51 @@ fn resolve_damage(
     player_bodies: &[(BodyHandle, usize)],
     enemy_bodies: &[BodyHandle],
     contacts: &[(BodyHandle, BodyHandle, Contact)],
+    physics: &PhysicsWorld,
     players: &mut Vec<Player>,
     enemies: &mut Vec<Box<dyn Enemy>>,
 ) {
     for proj in projectiles {
+        let dmg = proj.rocket_impact_damage();
         match proj.owner {
             ProjectileOwner::Enemy => {
                 for &(pb, slot) in player_bodies {
-                    let hit = contacts.iter().any(|(a, b, _)| {
-                        (*a == proj.body && *b == pb) || (*b == proj.body && *a == pb)
-                    });
+                    let hit = match &proj.motion {
+                        ProjectileMotion::Physics(s) => contacts.iter().any(|(a, b, _)| {
+                            (*a == s.body && *b == pb) || (*b == s.body && *a == pb)
+                        }),
+                        ProjectileMotion::Scripted { state, .. } => {
+                            if let Some(body) = physics.try_body(pb) {
+                                circle_overlaps_body(state.position, proj.size, body)
+                            } else {
+                                false
+                            }
+                        }
+                    };
                     if hit {
                         if let Some(player) = players.iter_mut().find(|p| p.slot == slot) {
-                            player.health = (player.health - proj.damage).max(0.0);
+                            player.health = (player.health - dmg).max(0.0);
                         }
                     }
                 }
             }
             ProjectileOwner::Player(_) => {
                 for (i, &eb) in enemy_bodies.iter().enumerate() {
-                    let hit = contacts.iter().any(|(a, b, _)| {
-                        (*a == proj.body && *b == eb) || (*b == proj.body && *a == eb)
-                    });
+                    let hit = match &proj.motion {
+                        ProjectileMotion::Physics(s) => contacts.iter().any(|(a, b, _)| {
+                            (*a == s.body && *b == eb) || (*b == s.body && *a == eb)
+                        }),
+                        ProjectileMotion::Scripted { state, .. } => {
+                            if let Some(body) = physics.try_body(eb) {
+                                circle_overlaps_body(state.position, proj.size, body)
+                            } else {
+                                false
+                            }
+                        }
+                    };
                     if hit {
                         if let Some(enemy) = enemies.get_mut(i) {
-                            enemy.take_damage(proj.damage);
+                            enemy.take_damage(dmg);
                         }
                     }
                 }
@@ -520,7 +904,7 @@ fn draw_spread_cone(
     camera: &Camera,
 ) {
     let stats = &player.weapon.stats;
-    let half_angle = stats.shot_arc / 2.0 + stats.jitter;
+    let half_angle = stats.shot_arc / 2.0 + stats.jitter + player.weapon.kickback;
     if half_angle < 1e-4 {
         return;
     }
@@ -554,7 +938,7 @@ fn draw_projectiles(
         stroke: None,
     };
     for proj in projectiles {
-        let pos = physics.body(proj.body).position;
+        let pos = proj.world_position(physics);
         let ndc = camera.world_to_ndc(pos);
         let r = camera.scale(proj.size);
         let style = match proj.owner {
@@ -620,17 +1004,8 @@ fn cleanup_projectiles(
     physics: &mut PhysicsWorld,
     walls: &[Wall],
     enemy_bodies: &[BodyHandle],
-    player_bodies: &[BodyHandle],
+    player_bodies: &[(BodyHandle, usize)],
 ) {
-    let wall_handles: std::collections::HashSet<BodyHandle> =
-        walls.iter().map(|w| w.body).collect();
-    let enemy_handle_set: std::collections::HashSet<BodyHandle> =
-        enemy_bodies.iter().copied().collect();
-    let player_handle_set: std::collections::HashSet<BodyHandle> =
-        player_bodies.iter().copied().collect();
-
-    let contacts = physics.contacts().to_vec();
-
     let mut to_remove: Vec<usize> = Vec::new();
     for (idx, proj) in projectiles.iter_mut().enumerate() {
         if proj.lifetime <= 0.0 {
@@ -638,46 +1013,73 @@ fn cleanup_projectiles(
             continue;
         }
 
-        let hit_wall = contacts.iter().any(|(a, b, _)| {
-            let involves_proj = *a == proj.body || *b == proj.body;
-            let involves_wall = wall_handles.contains(a) || wall_handles.contains(b);
-            involves_proj && involves_wall
-        });
-
-        if hit_wall {
-            if proj.piercing == 0 {
-                to_remove.push(idx);
-            } else {
-                proj.piercing -= 1;
+        match &mut proj.motion {
+            ProjectileMotion::Physics(_) => {
+                // Physics: TTL, min-speed, and bounce cap only (handled elsewhere).
             }
-            continue;
-        }
-
-        match proj.owner {
-            ProjectileOwner::Player(_) => {
-                let hit_enemy = contacts.iter().any(|(a, b, _)| {
-                    let involves_proj = *a == proj.body || *b == proj.body;
-                    let involves_enemy =
-                        enemy_handle_set.contains(a) || enemy_handle_set.contains(b);
-                    involves_proj && involves_enemy
-                });
-                if hit_enemy && proj.piercing == 0 {
-                    to_remove.push(idx);
-                } else if hit_enemy {
-                    proj.piercing -= 1;
+            ProjectileMotion::Scripted { state, .. } => {
+                let mut wall_hit = false;
+                for w in walls {
+                    let body = physics.body(w.body);
+                    if circle_overlaps_body(state.position, proj.size, body) {
+                        wall_hit = true;
+                        break;
+                    }
                 }
-            }
-            ProjectileOwner::Enemy => {
-                let hit_player = contacts.iter().any(|(a, b, _)| {
-                    let involves_proj = *a == proj.body || *b == proj.body;
-                    let involves_player =
-                        player_handle_set.contains(a) || player_handle_set.contains(b);
-                    involves_proj && involves_player
-                });
-                if hit_player && proj.piercing == 0 {
+                if wall_hit {
                     to_remove.push(idx);
-                } else if hit_player {
-                    proj.piercing -= 1;
+                    continue;
+                }
+
+                match proj.owner {
+                    ProjectileOwner::Player(_) => {
+                        let mut overlapping_h: Option<BodyHandle> = None;
+                        for &eb in enemy_bodies {
+                            if let Some(body) = physics.try_body(eb) {
+                                if circle_overlaps_body(state.position, proj.size, body) {
+                                    overlapping_h = Some(eb);
+                                    break;
+                                }
+                            }
+                        }
+                        let entering = match (overlapping_h, state.last_enemy_body) {
+                            (Some(h), None) => Some(h),
+                            (Some(h), Some(p)) if h != p => Some(h),
+                            _ => None,
+                        };
+                        if entering.is_some() {
+                            if proj.piercing == 0 {
+                                to_remove.push(idx);
+                            } else {
+                                proj.piercing -= 1;
+                            }
+                        }
+                        state.last_enemy_body = overlapping_h;
+                    }
+                    ProjectileOwner::Enemy => {
+                        let mut overlapping_slot: Option<usize> = None;
+                        for &(pb, slot) in player_bodies {
+                            if let Some(body) = physics.try_body(pb) {
+                                if circle_overlaps_body(state.position, proj.size, body) {
+                                    overlapping_slot = Some(slot);
+                                    break;
+                                }
+                            }
+                        }
+                        let entering = match (overlapping_slot, state.last_player_slot) {
+                            (Some(s), None) => Some(s),
+                            (Some(s), Some(p)) if s != p => Some(s),
+                            _ => None,
+                        };
+                        if entering.is_some() {
+                            if proj.piercing == 0 {
+                                to_remove.push(idx);
+                            } else {
+                                proj.piercing -= 1;
+                            }
+                        }
+                        state.last_player_slot = overlapping_slot;
+                    }
                 }
             }
         }
@@ -687,7 +1089,9 @@ fn cleanup_projectiles(
     to_remove.dedup();
     for idx in to_remove.into_iter().rev() {
         let removed = projectiles.swap_remove(idx);
-        physics.remove_body(removed.body);
+        if let Some(h) = removed.physics_body() {
+            physics.remove_body(h);
+        }
     }
 }
 
@@ -820,6 +1224,9 @@ mod tests {
             .push(Player::new(1, Vec2::new(4.0, 0.0), &mut world.physics));
         world.camera.position = Vec2::new(0.0, 10.0);
 
+        // `World::tick` uses wall-clock `Instant` deltas; a tight loop yields ~0 dt unless
+        // some real time elapses before the first tick.
+        std::thread::sleep(std::time::Duration::from_millis(12));
         for _ in 0..100 {
             world.tick(&[]);
         }
@@ -865,12 +1272,15 @@ mod tests {
     fn add_wall_registers_in_walls_and_physics() {
         let mut world = World::new();
         assert_eq!(world.walls.len(), 0);
+        let (collision_layers, collision_mask) = crate::physics_layers::wall_collision();
         world.add_wall(
             Body {
                 position: Vec2::new(3.0, 0.0),
                 velocity: Vec2::ZERO,
                 mass: f32::INFINITY,
                 restitution: 0.3,
+                collision_layers,
+                collision_mask,
                 collider: physics::Collider::Circle { radius: 0.5 },
             },
             'T',
@@ -882,12 +1292,15 @@ mod tests {
     #[test]
     fn remove_wall_clears_from_walls_and_physics() {
         let mut world = World::new();
+        let (collision_layers, collision_mask) = crate::physics_layers::wall_collision();
         let h = world.add_wall(
             Body {
                 position: Vec2::new(3.0, 0.0),
                 velocity: Vec2::ZERO,
                 mass: f32::INFINITY,
                 restitution: 0.3,
+                collision_layers,
+                collision_mask,
                 collider: physics::Collider::Circle { radius: 0.5 },
             },
             'T',

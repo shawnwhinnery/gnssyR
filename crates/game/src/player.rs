@@ -4,6 +4,7 @@ use physics::{Body, Collider, PhysicsWorld};
 use crate::{
     actor::{draw_shape, Actor, ActorCore},
     camera::Camera,
+    physics_layers,
     weapon::{Weapon, WeaponStats},
 };
 use gfx::{
@@ -26,11 +27,14 @@ pub struct Player {
 
 impl Player {
     pub fn new(slot: usize, start_pos: Vec2, physics: &mut PhysicsWorld) -> Self {
+        let (collision_layers, collision_mask) = physics_layers::player_collision();
         let body = physics.add_body(Body {
             position: start_pos,
             velocity: Vec2::ZERO,
             mass: 1.0,
             restitution: 0.3,
+            collision_layers,
+            collision_mask,
             collider: Collider::Circle {
                 radius: PLAYER_RADIUS,
             },

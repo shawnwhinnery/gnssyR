@@ -12,8 +12,9 @@ use crate::{
     mod_part::{self, ModPart},
     npc::NpcKind,
     pause::PauseState,
+    physics_layers,
     scrap::{ScrapColor, ScrapShape},
-    weapon::{WeaponFiringState, WeaponStats},
+    weapon::{ProjectileBehavior, WeaponFiringState, WeaponStats},
     world::World,
 };
 
@@ -25,9 +26,15 @@ use super::{Scene, SceneTransition};
 
 #[derive(Clone, Copy, PartialEq)]
 enum SandboxTab {
-    Weapon,
+    PrimaryWeapon,
     Enemies,
     Inventory,
+}
+
+fn primary_weapon_grid_section(ui: &mut egui::Ui, title: &str) {
+    ui.label(egui::RichText::new(title).strong());
+    ui.label("");
+    ui.end_row();
 }
 
 // ---------------------------------------------------------------------------
@@ -76,7 +83,7 @@ enum InteractionState {
 pub struct SandboxScene {
     world: World,
     pause: PauseState,
-    stats_editor: RefCell<WeaponStats>,
+    weapon_editor: RefCell<(WeaponStats, ProjectileBehavior)>,
     slow_motion: Cell<bool>,
     enemy_spawn_requests: Cell<u32>,
     player_respawn_requested: Cell<bool>,
@@ -99,11 +106,11 @@ impl SandboxScene {
         Self {
             world,
             pause: PauseState::new(),
-            stats_editor: RefCell::new(WeaponStats::default()),
+            weapon_editor: RefCell::new((WeaponStats::default(), ProjectileBehavior::default())),
             slow_motion: Cell::new(false),
             enemy_spawn_requests: Cell::new(0),
             player_respawn_requested: Cell::new(false),
-            selected_tab: Cell::new(SandboxTab::Weapon),
+            selected_tab: Cell::new(SandboxTab::PrimaryWeapon),
             spawn_color: Cell::new(ScrapColor::Red),
             spawn_shape: Cell::new(ScrapShape::Diamond),
             scrap_spawn_request: Cell::new(false),
@@ -116,6 +123,7 @@ impl SandboxScene {
 
 /// The four classic sandbox obstacle shapes (circle, rect, triangle, octagon).
 fn add_sandbox_walls(world: &mut World) {
+    let (cl, cm) = physics_layers::wall_collision();
     // Circle — right side.
     world.add_wall(
         Body {
@@ -123,6 +131,8 @@ fn add_sandbox_walls(world: &mut World) {
             velocity: Vec2::ZERO,
             mass: f32::INFINITY,
             restitution: 0.3,
+            collision_layers: cl,
+            collision_mask: cm,
             collider: Collider::Circle { radius: 0.65 },
         },
         'C',
@@ -136,6 +146,8 @@ fn add_sandbox_walls(world: &mut World) {
             velocity: Vec2::ZERO,
             mass: f32::INFINITY,
             restitution: 0.3,
+            collision_layers: cl,
+            collision_mask: cm,
             collider: Collider::Convex {
                 vertices: vec![
                     Vec2::new(-0.8, -0.5),
@@ -157,6 +169,8 @@ fn add_sandbox_walls(world: &mut World) {
             velocity: Vec2::ZERO,
             mass: f32::INFINITY,
             restitution: 0.3,
+            collision_layers: cl,
+            collision_mask: cm,
             collider: Collider::Convex {
                 vertices: vec![
                     Vec2::new(-r * 0.866, -r * 0.5),
@@ -183,6 +197,8 @@ fn add_sandbox_walls(world: &mut World) {
             velocity: Vec2::ZERO,
             mass: f32::INFINITY,
             restitution: 0.3,
+            collision_layers: cl,
+            collision_mask: cm,
             collider: Collider::Convex {
                 vertices: oct_verts,
             },
@@ -232,7 +248,9 @@ impl Scene for SandboxScene {
                 events.iter().filter(|e| !is_escape(e)).cloned().collect();
             self.world.time_scale = if self.slow_motion.get() { 0.2 } else { 1.0 };
             if let Some(player) = self.world.players.first_mut() {
-                player.weapon.stats = self.stats_editor.borrow().clone();
+                let (stats, beh) = &*self.weapon_editor.borrow();
+                player.weapon.stats = stats.clone();
+                player.weapon.projectile_behavior = *beh;
             }
             self.world.tick(&filtered);
             return None;
@@ -241,7 +259,9 @@ impl Scene for SandboxScene {
         self.pause.tick(events);
         self.world.time_scale = if self.slow_motion.get() { 0.2 } else { 1.0 };
         if let Some(player) = self.world.players.first_mut() {
-            player.weapon.stats = self.stats_editor.borrow().clone();
+            let (stats, beh) = &*self.weapon_editor.borrow();
+            player.weapon.stats = stats.clone();
+            player.weapon.projectile_behavior = *beh;
         }
 
         if self.player_respawn_requested.get() {
@@ -594,11 +614,11 @@ impl SandboxScene {
             .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
-                ui.set_min_width(220.0);
+                ui.set_min_width(248.0);
 
                 let mut tab = self.selected_tab.get();
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut tab, SandboxTab::Weapon, "Weapon");
+                    ui.selectable_value(&mut tab, SandboxTab::PrimaryWeapon, "Primary weapon");
                     ui.selectable_value(&mut tab, SandboxTab::Enemies, "Enemies");
                     ui.selectable_value(&mut tab, SandboxTab::Inventory, "Inventory");
                 });
@@ -606,14 +626,14 @@ impl SandboxScene {
                 ui.separator();
 
                 match tab {
-                    SandboxTab::Weapon => self.draw_weapon_tab(ui),
+                    SandboxTab::PrimaryWeapon => self.draw_primary_weapon_tab(ui),
                     SandboxTab::Enemies => self.draw_enemies_tab(ui),
                     SandboxTab::Inventory => self.draw_inventory_tab(ui),
                 }
             });
     }
 
-    fn draw_weapon_tab(&self, ui: &mut egui::Ui) {
+    fn draw_primary_weapon_tab(&self, ui: &mut egui::Ui) {
         let state_display = self.world.players.first().map(|p| {
             let color = match &p.weapon.state {
                 WeaponFiringState::Idle => egui::Color32::from_rgb(100, 220, 100),
@@ -658,115 +678,251 @@ impl SandboxScene {
 
         ui.separator();
 
-        let mut stats = self.stats_editor.borrow_mut();
+        let live_kickback_deg = self
+            .world
+            .players
+            .first()
+            .map(|p| p.weapon.kickback.to_degrees());
 
-        egui::Grid::new("weapon_stats_editor")
-            .num_columns(2)
-            .spacing([8.0, 3.0])
+        let mut editor = self.weapon_editor.borrow_mut();
+        let (stats, behavior) = &mut *editor;
+
+        egui::ScrollArea::vertical()
+            .max_height(320.0)
             .show(ui, |ui| {
-                ui.label("Fire rate");
-                ui.add(
-                    egui::DragValue::new(&mut stats.fire_rate)
-                        .range(0.5..=60.0)
-                        .suffix(" rps")
-                        .speed(0.1),
-                );
-                ui.end_row();
+                egui::Grid::new("weapon_stats_editor")
+                    .num_columns(2)
+                    .spacing([8.0, 3.0])
+                    .show(ui, |ui| {
+                        primary_weapon_grid_section(ui, "Firing & burst");
+                        ui.label("fire_rate");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.fire_rate)
+                                .range(0.5..=60.0)
+                                .suffix(" rps")
+                                .speed(0.1),
+                        );
+                        ui.end_row();
 
-                ui.label("Projectiles");
-                ui.add(egui::Slider::new(
-                    &mut stats.projectiles_per_shot,
-                    1u32..=16,
-                ));
-                ui.end_row();
+                        ui.label("burst_count");
+                        ui.add(egui::Slider::new(&mut stats.burst_count, 1u32..=8));
+                        ui.end_row();
 
-                ui.label("Shot arc");
-                let mut arc_deg = stats.shot_arc.to_degrees();
-                if ui
-                    .add(egui::Slider::new(&mut arc_deg, 0.0_f32..=180.0).suffix("°"))
-                    .changed()
-                {
-                    stats.shot_arc = arc_deg.to_radians();
-                }
-                ui.end_row();
+                        ui.label("burst_delay");
+                        let mut delay_ms = stats.burst_delay * 1000.0;
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut delay_ms)
+                                    .range(1.0_f32..=2000.0)
+                                    .suffix(" ms")
+                                    .speed(1.0),
+                            )
+                            .changed()
+                        {
+                            stats.burst_delay = delay_ms / 1000.0;
+                        }
+                        ui.end_row();
 
-                ui.label("Jitter");
-                let mut jitter_deg = stats.jitter.to_degrees();
-                if ui
-                    .add(egui::Slider::new(&mut jitter_deg, 0.0_f32..=45.0).suffix("°"))
-                    .changed()
-                {
-                    stats.jitter = jitter_deg.to_radians();
-                }
-                ui.end_row();
+                        primary_weapon_grid_section(ui, "Shot pattern");
+                        ui.label("projectiles_per_shot");
+                        ui.add(egui::Slider::new(
+                            &mut stats.projectiles_per_shot,
+                            1u32..=16,
+                        ));
+                        ui.end_row();
 
-                ui.label("Burst count");
-                ui.add(egui::Slider::new(&mut stats.burst_count, 1u32..=8));
-                ui.end_row();
+                        ui.label("shot_arc");
+                        let mut arc_deg = stats.shot_arc.to_degrees();
+                        if ui
+                            .add(egui::Slider::new(&mut arc_deg, 0.0_f32..=360.0).suffix("°"))
+                            .changed()
+                        {
+                            stats.shot_arc = arc_deg.to_radians();
+                        }
+                        ui.end_row();
 
-                ui.label("Burst delay");
-                let mut delay_ms = stats.burst_delay * 1000.0;
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut delay_ms)
-                            .range(10.0_f32..=1000.0)
-                            .suffix(" ms")
-                            .speed(1.0),
-                    )
-                    .changed()
-                {
-                    stats.burst_delay = delay_ms / 1000.0;
-                }
-                ui.end_row();
+                        primary_weapon_grid_section(ui, "Spread & kickback");
+                        ui.label("jitter");
+                        let mut jitter_deg = stats.jitter.to_degrees();
+                        if ui
+                            .add(egui::Slider::new(&mut jitter_deg, 0.0_f32..=45.0).suffix("°"))
+                            .changed()
+                        {
+                            stats.jitter = jitter_deg.to_radians();
+                        }
+                        ui.end_row();
 
-                ui.label("Speed");
-                ui.add(
-                    egui::DragValue::new(&mut stats.projectile_speed)
-                        .range(1.0..=100.0)
-                        .suffix(" u/s")
-                        .speed(0.5),
-                );
-                ui.end_row();
+                        ui.label("kickback");
+                        let mut iv_deg = stats.kickback.to_degrees();
+                        if ui
+                            .add(egui::Slider::new(&mut iv_deg, 0.0_f32..=15.0).suffix("°"))
+                            .changed()
+                        {
+                            stats.kickback = iv_deg.to_radians();
+                        }
+                        ui.end_row();
 
-                ui.label("Size");
-                ui.add(
-                    egui::DragValue::new(&mut stats.projectile_size)
-                        .range(0.02..=0.5)
-                        .speed(0.005),
-                );
-                ui.end_row();
+                        ui.label("stability (τ)");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.stability)
+                                .range(0.02..=5.0)
+                                .suffix(" s")
+                                .speed(0.02),
+                        );
+                        ui.end_row();
 
-                ui.label("Lifetime");
-                ui.add(
-                    egui::DragValue::new(&mut stats.projectile_lifetime)
-                        .range(0.1..=10.0)
-                        .suffix(" s")
-                        .speed(0.05),
-                );
-                ui.end_row();
+                        ui.label("kickback (live)");
+                        if let Some(deg) = live_kickback_deg {
+                            ui.label(format!("{deg:.2}°"));
+                        } else {
+                            ui.label("—");
+                        }
+                        ui.end_row();
 
-                ui.label("Piercing");
-                ui.add(egui::Slider::new(&mut stats.piercing, 0u32..=10));
-                ui.end_row();
+                        primary_weapon_grid_section(ui, "Projectile");
+                        ui.label("projectile_behavior");
+                        egui::ComboBox::from_id_salt("sandbox_proj_behavior")
+                            .selected_text(behavior.label())
+                            .show_ui(ui, |ui| {
+                                for b in ProjectileBehavior::ALL {
+                                    ui.selectable_value(behavior, b, b.label());
+                                }
+                            });
+                        ui.end_row();
 
-                ui.label("Damage");
-                ui.add(
-                    egui::DragValue::new(&mut stats.damage_total)
-                        .range(0.0..=1000.0)
-                        .speed(1.0),
-                );
-                ui.end_row();
+                        ui.label("projectile_speed");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.projectile_speed)
+                                .range(1.0..=100.0)
+                                .suffix(" u/s")
+                                .speed(0.5),
+                        );
+                        ui.end_row();
 
-                ui.label("Recoil");
-                ui.add(
-                    egui::DragValue::new(&mut stats.recoil_force)
-                        .range(0.0..=20.0)
-                        .speed(0.1),
-                );
-                ui.end_row();
+                        ui.label("projectile_size");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.projectile_size)
+                                .range(0.02..=0.5)
+                                .speed(0.005),
+                        );
+                        ui.end_row();
+
+                        ui.label("projectile_lifetime");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.projectile_lifetime)
+                                .range(0.1..=10.0)
+                                .suffix(" s")
+                                .speed(0.05),
+                        );
+                        ui.end_row();
+
+                        ui.label("piercing");
+                        ui.add(egui::Slider::new(&mut stats.piercing, 0u32..=10));
+                        ui.end_row();
+
+                        primary_weapon_grid_section(ui, "Oscillating (path)");
+                        ui.label("oscillation_frequency");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.oscillation_frequency)
+                                .range(0.1..=30.0)
+                                .suffix(" Hz")
+                                .speed(0.05),
+                        );
+                        ui.end_row();
+
+                        ui.label("oscillation_magnitude");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.oscillation_magnitude)
+                                .range(0.0..=2.0)
+                                .speed(0.01),
+                        );
+                        ui.end_row();
+
+                        primary_weapon_grid_section(ui, "Physics projectile");
+                        ui.label("physics_max_bounces (0 = ∞)");
+                        ui.add(egui::Slider::new(&mut stats.physics_max_bounces, 0u32..=32));
+                        ui.end_row();
+
+                        ui.label("physics_friction");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.physics_friction)
+                                .range(0.0..=20.0)
+                                .speed(0.05),
+                        );
+                        ui.end_row();
+
+                        ui.label("physics_min_speed");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.physics_min_speed)
+                                .range(0.0..=30.0)
+                                .suffix(" u/s")
+                                .speed(0.05),
+                        );
+                        ui.end_row();
+
+                        primary_weapon_grid_section(ui, "Rocket");
+                        ui.label("rocket_acceleration");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.rocket_acceleration)
+                                .range(0.0..=200.0)
+                                .suffix(" u/s²")
+                                .speed(0.5),
+                        );
+                        ui.end_row();
+
+                        ui.label("kinetic_damage_scale");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.kinetic_damage_scale)
+                                .range(0.0..=10.0)
+                                .speed(0.02),
+                        );
+                        ui.end_row();
+
+                        primary_weapon_grid_section(ui, "Seeking");
+                        ui.label("seeking_turn_radius");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.seeking_turn_radius)
+                                .range(0.1..=20.0)
+                                .suffix(" u")
+                                .speed(0.05),
+                        );
+                        ui.end_row();
+
+                        ui.label("seeking_acquire_half_angle");
+                        let mut half_deg = stats.seeking_acquire_half_angle.to_degrees();
+                        if ui
+                            .add(egui::Slider::new(&mut half_deg, 5.0_f32..=175.0).suffix("°"))
+                            .changed()
+                        {
+                            stats.seeking_acquire_half_angle = half_deg.to_radians();
+                        }
+                        ui.end_row();
+
+                        primary_weapon_grid_section(ui, "Impact");
+                        ui.label("damage_total");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.damage_total)
+                                .range(0.0..=1000.0)
+                                .speed(1.0),
+                        );
+                        ui.end_row();
+
+                        ui.label("recoil_force");
+                        ui.add(
+                            egui::DragValue::new(&mut stats.recoil_force)
+                                .range(0.0..=20.0)
+                                .speed(0.1),
+                        );
+                        ui.end_row();
+                    });
             });
 
         ui.separator();
+        ui.label(
+            egui::RichText::new("Smaller stability τ → runtime kickback decays faster (always, including while firing).")
+                .small()
+                .color(egui::Color32::GRAY),
+        );
         ui.label(
             egui::RichText::new("LMB / Space to fire")
                 .small()

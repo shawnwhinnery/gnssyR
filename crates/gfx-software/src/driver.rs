@@ -1,3 +1,4 @@
+use gfx::aspect_projection;
 use gfx::driver::{GraphicsDriver, MeshHandle, TextureHandle, Vertex};
 use glam::Mat3;
 use std::collections::HashMap;
@@ -75,22 +76,6 @@ impl SoftwareDriver {
     }
     pub fn height(&self) -> u32 {
         self.height
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Aspect-ratio projection
-// ---------------------------------------------------------------------------
-
-fn aspect_projection(width: u32, height: u32) -> glam::Mat3 {
-    let w = width as f32;
-    let h = height as f32;
-    if w > h {
-        glam::Mat3::from_scale(glam::Vec2::new(h / w, 1.0))
-    } else if h > w {
-        glam::Mat3::from_scale(glam::Vec2::new(1.0, w / h))
-    } else {
-        glam::Mat3::IDENTITY
     }
 }
 

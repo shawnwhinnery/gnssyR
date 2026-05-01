@@ -5,6 +5,7 @@ pub mod scene;
 pub mod shape;
 pub mod style;
 pub mod transform;
+pub mod view;
 
 pub use color::Color;
 pub use driver::{GraphicsDriver, Mesh, MeshHandle, TextureHandle, Vertex};
@@ -13,6 +14,7 @@ pub use path::Path;
 pub use scene::{Group, Node, Scene, Shape};
 pub use style::{Fill, LineCap, LineJoin, Stroke, Style};
 pub use transform::Transform;
+pub use view::{aspect_projection, window_ndc_to_logical_ndc};
 
 /// Tessellate a path with the given style into GPU-ready triangle meshes.
 ///

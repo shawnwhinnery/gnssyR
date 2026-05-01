@@ -1,5 +1,5 @@
 use glam::Vec2;
-use physics::{narrow, Body, BodyHandle, Collider, PhysicsWorld};
+use physics::{narrow, Body, BodyHandle, Collider, PhysicsWorld, COLLISION_FILTER_MATCH_ALL};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -210,6 +210,8 @@ fn world_bounce() {
         velocity: Vec2::new(2.0, 0.0),
         mass: 1.0,
         restitution: 1.0, // elastic
+        collision_layers: COLLISION_FILTER_MATCH_ALL,
+        collision_mask: COLLISION_FILTER_MATCH_ALL,
         collider: Collider::Circle { radius: 0.6 },
     });
     let b = world.add_body(Body {
@@ -217,6 +219,8 @@ fn world_bounce() {
         velocity: Vec2::new(-2.0, 0.0),
         mass: 1.0,
         restitution: 1.0,
+        collision_layers: COLLISION_FILTER_MATCH_ALL,
+        collision_mask: COLLISION_FILTER_MATCH_ALL,
         collider: Collider::Circle { radius: 0.6 },
     });
 
@@ -244,6 +248,8 @@ fn world_static_body_does_not_move() {
         velocity: Vec2::ZERO,
         mass: f32::INFINITY,
         restitution: 0.5,
+        collision_layers: COLLISION_FILTER_MATCH_ALL,
+        collision_mask: COLLISION_FILTER_MATCH_ALL,
         collider: floor_mesh(),
     });
 
@@ -253,6 +259,8 @@ fn world_static_body_does_not_move() {
         velocity: Vec2::new(0.0, -1.0),
         mass: 1.0,
         restitution: 0.5,
+        collision_layers: COLLISION_FILTER_MATCH_ALL,
+        collision_mask: COLLISION_FILTER_MATCH_ALL,
         collider: Collider::Circle { radius: 0.4 },
     });
 
@@ -282,6 +290,8 @@ fn world_contacts_cleared_between_steps() {
         velocity: Vec2::ZERO,
         mass: 1.0,
         restitution: 0.0,
+        collision_layers: COLLISION_FILTER_MATCH_ALL,
+        collision_mask: COLLISION_FILTER_MATCH_ALL,
         collider: Collider::Circle { radius: 1.0 },
     });
     world.add_body(Body {
@@ -289,6 +299,8 @@ fn world_contacts_cleared_between_steps() {
         velocity: Vec2::ZERO,
         mass: 1.0,
         restitution: 0.0,
+        collision_layers: COLLISION_FILTER_MATCH_ALL,
+        collision_mask: COLLISION_FILTER_MATCH_ALL,
         collider: Collider::Circle { radius: 1.0 },
     });
 
@@ -302,5 +314,39 @@ fn world_contacts_cleared_between_steps() {
     assert!(
         world.contacts().is_empty(),
         "contacts should be empty after separation"
+    );
+}
+
+#[test]
+fn world_layers_skip_overlapping_pair() {
+    let mut world = PhysicsWorld::new();
+
+    // Same geometry as `world_contacts_cleared_between_steps`, but disjoint layer filters.
+    const LAYER_A: u32 = 1 << 0;
+    const LAYER_B: u32 = 1 << 1;
+
+    world.add_body(Body {
+        position: Vec2::ZERO,
+        velocity: Vec2::ZERO,
+        mass: 1.0,
+        restitution: 0.0,
+        collision_layers: LAYER_A,
+        collision_mask: LAYER_B, // only cares about layer B
+        collider: Collider::Circle { radius: 1.0 },
+    });
+    world.add_body(Body {
+        position: Vec2::new(0.5, 0.0),
+        velocity: Vec2::ZERO,
+        mass: 1.0,
+        restitution: 0.0,
+        collision_layers: LAYER_B,
+        collision_mask: LAYER_B, // does not include LAYER_A → pair filtered
+        collider: Collider::Circle { radius: 1.0 },
+    });
+
+    world.step(0.0);
+    assert!(
+        world.contacts().is_empty(),
+        "overlapping shapes on non-interacting layers must not produce contacts"
     );
 }
