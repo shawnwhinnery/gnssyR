@@ -157,3 +157,42 @@ The crate compiles and all tests above run in a process with no `DISPLAY`,
 `SoftwareDriver::headless` constructs without any GPU driver calls
 (verified by `strace`-level: no `/dev/dri` open in test process).
 *This is a documentation test — verified by the absence of GPU deps in Cargo.toml.*
+
+---
+
+## Bitmap / Texture
+
+All tests use packed ARGB `u32` texels. `upload_texture` / `draw_bitmap` / `free_texture`
+match `GraphicsDriver` in `crates/gfx/index.md`.
+
+### `upload_texture_returns_distinct_handles`
+Two uploads return different non-zero `TextureHandle` values.
+
+### `texture_survives_begin_frame`
+After `upload_texture`, a full frame (`begin_frame` → … → `end_frame`), then another
+frame that calls `draw_bitmap` with the same handle, the texture still draws.
+
+### `draw_bitmap_solid_corner`
+2×2 texture with opaque red only at texel (0,0); after `draw_bitmap` with identity
+transform, the screen pixel at clip `(-1, 1)` (top-left) is red.
+
+### `draw_bitmap_tint`
+White 2×2 texture with green `tint`; centre pixel is green.
+
+### `draw_bitmap_alpha_over_clear`
+Half-opaque red over opaque blue clear; centre pixel has both red and blue components.
+
+### `draw_bitmap_translation`
+Two `draw_bitmap` calls with different transforms; a pixel left of the translated quad
+is white and a pixel at the translated centre is red-tinted.
+
+### `draw_mesh_then_bitmap_overlaps`
+White mesh then semi-transparent red bitmap; centre shows red influence on green clear
+through the mesh.
+
+### `free_texture_skips_draw_without_panic`
+After `free_texture`, `draw_bitmap` with that handle leaves the framebuffer all clear colour.
+
+### `double_free_texture_no_panic`
+Calling `free_texture` twice on the same handle does not panic.
+

@@ -8,7 +8,7 @@ use glam::{Mat3, Vec2};
 
 /// Convert a normalised [0,1]^4 colour to packed ARGB u32 the same way the
 /// driver does: `(a<<24)|(r<<16)|(g<<8)|b`.
-fn pack(r: f32, g: f32, b: f32, a: f32) -> u32 {
+fn _pack(r: f32, g: f32, b: f32, a: f32) -> u32 {
     let r = (r * 255.0) as u32;
     let g = (g * 255.0) as u32;
     let b = (b * 255.0) as u32;
@@ -501,4 +501,162 @@ fn draw_multiple_meshes_in_one_frame() {
     let cb = clip_to_pixel(0.6, -0.53, w, h);
     assert_eq!(d.pixels()[ca], RED, "triangle A centroid should be red");
     assert_eq!(d.pixels()[cb], BLUE, "triangle B centroid should be blue");
+}
+
+// ---------------------------------------------------------------------------
+// Bitmap / Texture
+// ---------------------------------------------------------------------------
+
+#[test]
+fn upload_texture_returns_distinct_handles() {
+    let mut d = SoftwareDriver::headless(32, 32);
+    let px1 = vec![0xFF_FF_00_00; 4]; // 2x2 red
+    let h1 = d.upload_texture(&px1, 2, 2);
+    let h2 = d.upload_texture(&px1, 2, 2);
+    assert_ne!(h1, 0);
+    assert_ne!(h2, 0);
+    assert_ne!(h1, h2);
+}
+
+#[test]
+fn texture_survives_begin_frame() {
+    let mut d = SoftwareDriver::headless(100, 100);
+    let px = vec![0xFF_FF_00_00; 4];
+    let tex = d.upload_texture(&px, 2, 2);
+    run_frame(&mut d, |d| d.clear([0.0, 0.0, 0.0, 1.0]));
+    d.begin_frame();
+    d.clear([0.0, 0.0, 0.0, 1.0]);
+    d.draw_bitmap(tex, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
+    d.end_frame();
+    d.present();
+    let centre = clip_to_pixel(0.0, 0.0, 100, 100);
+    assert_eq!(d.pixels()[centre], RED);
+}
+
+#[test]
+fn draw_bitmap_solid_corner() {
+    let (w, h) = (100, 100);
+    let mut d = SoftwareDriver::headless(w, h);
+    // 2x2: top-left red, others black
+    let mut px = vec![0xFF_00_00_00; 4];
+    px[0] = RED;
+    let tex = d.upload_texture(&px, 2, 2);
+    run_frame(&mut d, |d| {
+        d.clear([0.0, 0.0, 0.0, 1.0]);
+        d.draw_bitmap(tex, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
+    });
+    // Screen top-left in clip is (-1,1) → UV (0,0) → red texel
+    let top_left = clip_to_pixel(-0.99, 0.99, w, h);
+    assert_eq!(d.pixels()[top_left], RED);
+}
+
+#[test]
+fn draw_bitmap_tint() {
+    let (w, h) = (100, 100);
+    let mut d = SoftwareDriver::headless(w, h);
+    let px = vec![0xFF_FF_FF_FF; 4];
+    let tex = d.upload_texture(&px, 2, 2);
+    run_frame(&mut d, |d| {
+        d.clear([0.0, 0.0, 0.0, 1.0]);
+        d.draw_bitmap(tex, Mat3::IDENTITY, [0.0, 1.0, 0.0, 1.0]);
+    });
+    let c = clip_to_pixel(0.0, 0.0, w, h);
+    assert_eq!(d.pixels()[c], GREEN);
+}
+
+#[test]
+fn draw_bitmap_alpha_over_clear() {
+    let (w, h) = (100, 100);
+    let mut d = SoftwareDriver::headless(w, h);
+    // Half-opaque red
+    let px = vec![0x80_FF_00_00; 4];
+    let tex = d.upload_texture(&px, 2, 2);
+    run_frame(&mut d, |d| {
+        d.clear([0.0, 0.0, 1.0, 1.0]); // blue
+        d.draw_bitmap(tex, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
+    });
+    let c = clip_to_pixel(0.0, 0.0, w, h);
+    let p = d.pixels()[c];
+    let b = (p & 0xFF) as u32;
+    assert!(b > 0, "blue channel should remain partially: {p:#x}");
+    let r = ((p >> 16) & 0xFF) as u32;
+    assert!(r > 0, "red should show through");
+}
+
+#[test]
+fn draw_bitmap_translation() {
+    let (w, h) = (100, 100);
+    let mut d = SoftwareDriver::headless(w, h);
+    let px = vec![0xFF_FF_FF_FF; 4];
+    let tex = d.upload_texture(&px, 2, 2);
+    run_frame(&mut d, |d| {
+        d.clear([0.0, 0.0, 0.0, 1.0]);
+        d.draw_bitmap(tex, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
+        d.draw_bitmap(
+            tex,
+            Mat3::from_translation(glam::Vec2::new(0.5, 0.0)),
+            [1.0, 0.0, 0.0, 1.0],
+        );
+    });
+    // Left of second quad (translated right by 0.5): only first draw hits.
+    let c1 = clip_to_pixel(-0.85, 0.0, w, h);
+    let c2 = clip_to_pixel(0.5, 0.0, w, h);
+    assert_eq!(d.pixels()[c1], WHITE);
+    assert_eq!(d.pixels()[c2], RED);
+}
+
+#[test]
+fn draw_mesh_then_bitmap_overlaps() {
+    let (w, h) = (100, 100);
+    let mut d = SoftwareDriver::headless(w, h);
+    let px = vec![0x80_FF_00_00; 4]; // semi-transparent red
+    let tex = d.upload_texture(&px, 2, 2);
+    run_frame(&mut d, |d| {
+        d.clear([0.0, 1.0, 0.0, 1.0]); // green
+        let verts = vec![
+            Vertex {
+                position: [0.0, 0.2],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [-0.2, -0.2],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [0.2, -0.2],
+                color: [1.0, 1.0, 1.0, 1.0],
+            },
+        ];
+        let hm = d.upload_mesh(&verts, &[0, 1, 2]);
+        d.draw_mesh(hm, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
+        d.draw_bitmap(tex, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
+    });
+    let c = clip_to_pixel(0.0, 0.0, w, h);
+    let p = d.pixels()[c];
+    let g = ((p >> 8) & 0xFF) as u32;
+    let r = ((p >> 16) & 0xFF) as u32;
+    assert!(r > 200, "red from bitmap should dominate centre");
+    assert!(g < 200, "green should be reduced by blend");
+}
+
+#[test]
+fn free_texture_skips_draw_without_panic() {
+    let mut d = SoftwareDriver::headless(32, 32);
+    let px = vec![0xFF_FF_00_00; 4];
+    let tex = d.upload_texture(&px, 2, 2);
+    d.free_texture(tex);
+    run_frame(&mut d, |d| {
+        d.clear([0.0, 0.0, 0.0, 1.0]);
+        d.draw_bitmap(tex, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
+    });
+    assert!(d.pixels().iter().all(|&p| p == BLACK));
+}
+
+#[test]
+fn double_free_texture_no_panic() {
+    let mut d = SoftwareDriver::headless(16, 16);
+    let px = vec![0xFF_FF_00_00; 4];
+    let tex = d.upload_texture(&px, 2, 2);
+    d.free_texture(tex);
+    d.free_texture(tex);
 }

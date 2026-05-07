@@ -136,3 +136,136 @@ fn rasterize_triangle(
 fn edge(a: Vec2, b: Vec2, c: Vec2) -> f32 {
     (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
 }
+
+/// Rasterise a textured quad (full bitmap) with nearest-neighbour sampling and
+/// Porter-Duff "over" blending into `pixels`.
+pub(crate) fn raster_bitmap(
+    pixels: &mut [u32],
+    fb_w: u32,
+    fb_h: u32,
+    tex_pixels: &[u32],
+    tex_w: u32,
+    tex_h: u32,
+    transform: Mat3,
+    tint: [f32; 4],
+) {
+    if tex_w == 0 || tex_h == 0 {
+        return;
+    }
+
+    // Clip-space corners + UV (row 0 = top of texture), matching `WgpuDriver`.
+    let corners = [
+        ([-1.0f32, -1.0f32], [0.0f32, 1.0f32]),
+        ([1.0, -1.0], [1.0, 1.0]),
+        ([1.0, 1.0], [1.0, 0.0]),
+        ([-1.0, 1.0], [0.0, 0.0]),
+    ];
+
+    let mut pscr = [Vec2::ZERO; 4];
+    let mut uvs = [[0f32; 2]; 4];
+    for i in 0..4 {
+        let clip = transform_pos(transform, corners[i].0);
+        pscr[i] = clip_to_screen(clip, fb_w, fb_h);
+        uvs[i] = corners[i].1;
+    }
+
+    rasterize_textured_triangle(
+        pixels, fb_w, fb_h, tex_pixels, tex_w, tex_h, pscr[0], pscr[1], pscr[2], uvs[0], uvs[1],
+        uvs[2], tint,
+    );
+    rasterize_textured_triangle(
+        pixels, fb_w, fb_h, tex_pixels, tex_w, tex_h, pscr[0], pscr[2], pscr[3], uvs[0], uvs[2],
+        uvs[3], tint,
+    );
+}
+
+fn unpack_argb(p: u32) -> [f32; 4] {
+    [
+        ((p >> 16) & 0xFF) as f32 / 255.0,
+        ((p >> 8) & 0xFF) as f32 / 255.0,
+        (p & 0xFF) as f32 / 255.0,
+        ((p >> 24) & 0xFF) as f32 / 255.0,
+    ]
+}
+
+fn sample_tex(tex: &[u32], w: u32, h: u32, u: f32, v: f32) -> [f32; 4] {
+    let wf = w as f32;
+    let hf = h as f32;
+    let tx = (u * (wf - 1.0).max(0.0)).round().clamp(0.0, wf - 1.0) as u32;
+    let ty = (v * (hf - 1.0).max(0.0)).round().clamp(0.0, hf - 1.0) as u32;
+    let idx = (ty * w + tx) as usize;
+    if idx >= tex.len() {
+        return [0.0, 0.0, 0.0, 0.0];
+    }
+    unpack_argb(tex[idx])
+}
+
+fn blend_over(dst: u32, src: [f32; 4]) -> u32 {
+    let d = unpack_argb(dst);
+    let sa = src[3].clamp(0.0, 1.0);
+    let da = d[3].clamp(0.0, 1.0);
+    let out_a = sa + da * (1.0 - sa);
+    if out_a < 1e-6 {
+        return 0;
+    }
+    let sp = [src[0] * sa, src[1] * sa, src[2] * sa];
+    let dp = [d[0] * da, d[1] * da, d[2] * da];
+    let op = [
+        sp[0] + dp[0] * (1.0 - sa),
+        sp[1] + dp[1] * (1.0 - sa),
+        sp[2] + dp[2] * (1.0 - sa),
+    ];
+    pack_argb(op[0] / out_a, op[1] / out_a, op[2] / out_a, out_a)
+}
+
+fn rasterize_textured_triangle(
+    pixels: &mut [u32],
+    width: u32,
+    height: u32,
+    tex_pixels: &[u32],
+    tex_w: u32,
+    tex_h: u32,
+    p0: Vec2,
+    p1: Vec2,
+    p2: Vec2,
+    uv0: [f32; 2],
+    uv1: [f32; 2],
+    uv2: [f32; 2],
+    tint: [f32; 4],
+) {
+    let min_x = p0.x.min(p1.x).min(p2.x).floor().max(0.0) as i32;
+    let min_y = p0.y.min(p1.y).min(p2.y).floor().max(0.0) as i32;
+    let max_x = (p0.x.max(p1.x).max(p2.x).ceil() as i32).min(width as i32 - 1);
+    let max_y = (p0.y.max(p1.y).max(p2.y).ceil() as i32).min(height as i32 - 1);
+
+    let denom = edge(p0, p1, p2);
+    if denom.abs() < 1e-6 {
+        return;
+    }
+
+    for py in min_y..=max_y {
+        for px in min_x..=max_x {
+            let p = Vec2::new(px as f32 + 0.5, py as f32 + 0.5);
+
+            let w0 = edge(p1, p2, p) / denom;
+            let w1 = edge(p2, p0, p) / denom;
+            let w2 = edge(p0, p1, p) / denom;
+
+            if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
+                continue;
+            }
+
+            let u = w0 * uv0[0] + w1 * uv1[0] + w2 * uv2[0];
+            let v = w0 * uv0[1] + w1 * uv1[1] + w2 * uv2[1];
+
+            let mut c = sample_tex(tex_pixels, tex_w, tex_h, u, v);
+            c[0] *= tint[0];
+            c[1] *= tint[1];
+            c[2] *= tint[2];
+            c[3] *= tint[3];
+
+            let idx = py as usize * width as usize + px as usize;
+            pixels[idx] = blend_over(pixels[idx], c);
+        }
+    }
+}

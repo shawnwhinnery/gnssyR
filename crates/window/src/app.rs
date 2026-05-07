@@ -1,5 +1,6 @@
 use crate::egui_renderer::EguiRenderer;
 use gfx::driver::GraphicsDriver;
+use gfx::{window_ndc_to_logical_ndc, Vec2};
 use input::backend::InputBackend;
 use input::event::{Button, InputEvent};
 use input::player::PlayerId;
@@ -187,6 +188,7 @@ fn translate_key(key: PhysicalKey) -> Option<Button> {
         KeyCode::KeyD | KeyCode::ArrowRight => Button::DPadRight,
         KeyCode::Space => Button::South,
         KeyCode::Escape => Button::Key(input::event::KeyCode::Escape),
+        KeyCode::KeyE => Button::Key(input::event::KeyCode::E),
         _ => return None,
     })
 }
@@ -245,9 +247,15 @@ where
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let (w, h) = self.win_size;
-                let x = ((position.x as f32 / (w as f32 * 0.5)) - 1.0).clamp(-1.0, 1.0);
-                let y = (1.0 - position.y as f32 / (h as f32 * 0.5)).clamp(-1.0, 1.0);
-                self.pending_keys.push(InputEvent::CursorMoved { x, y });
+                let window_ndc = Vec2::new(
+                    ((position.x as f32 / (w as f32 * 0.5)) - 1.0).clamp(-1.0, 1.0),
+                    (1.0 - position.y as f32 / (h as f32 * 0.5)).clamp(-1.0, 1.0),
+                );
+                let logical = window_ndc_to_logical_ndc(w, h, window_ndc);
+                self.pending_keys.push(InputEvent::CursorMoved {
+                    x: logical.x,
+                    y: logical.y,
+                });
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 // Don't re-emit OS key-repeat events — we track held state ourselves.
@@ -263,7 +271,11 @@ where
                     });
                 }
             }
-            WindowEvent::MouseInput { button: MouseButton::Left, state, .. } => {
+            WindowEvent::MouseInput {
+                button: MouseButton::Left,
+                state,
+                ..
+            } => {
                 self.pending_keys.push(InputEvent::Button {
                     player: PlayerId::P1,
                     button: Button::South,
@@ -348,9 +360,7 @@ where
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         // Feed the event to egui first; if it consumes it, skip game input.
-        if let (Some(egui_winit), Some(window)) =
-            (self.egui_winit.as_mut(), self.window.as_ref())
-        {
+        if let (Some(egui_winit), Some(window)) = (self.egui_winit.as_mut(), self.window.as_ref()) {
             let response = egui_winit.on_window_event(window, &event);
             if response.consumed {
                 // Still handle structural events even when egui consumed input.
@@ -385,9 +395,15 @@ where
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let (w, h) = self.win_size;
-                let x = ((position.x as f32 / (w as f32 * 0.5)) - 1.0).clamp(-1.0, 1.0);
-                let y = (1.0 - position.y as f32 / (h as f32 * 0.5)).clamp(-1.0, 1.0);
-                self.pending_keys.push(InputEvent::CursorMoved { x, y });
+                let window_ndc = Vec2::new(
+                    ((position.x as f32 / (w as f32 * 0.5)) - 1.0).clamp(-1.0, 1.0),
+                    (1.0 - position.y as f32 / (h as f32 * 0.5)).clamp(-1.0, 1.0),
+                );
+                let logical = window_ndc_to_logical_ndc(w, h, window_ndc);
+                self.pending_keys.push(InputEvent::CursorMoved {
+                    x: logical.x,
+                    y: logical.y,
+                });
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.repeat {
@@ -402,7 +418,11 @@ where
                     });
                 }
             }
-            WindowEvent::MouseInput { button: MouseButton::Left, state, .. } => {
+            WindowEvent::MouseInput {
+                button: MouseButton::Left,
+                state,
+                ..
+            } => {
                 self.pending_keys.push(InputEvent::Button {
                     player: PlayerId::P1,
                     button: Button::South,

@@ -1,14 +1,16 @@
 use glam::{Mat3, Vec2};
-use physics::{Body, BodyHandle, Collider, PhysicsWorld};
+use physics::{Body, Collider, PhysicsWorld};
 
 use crate::{
+    actor::{draw_shape, Actor, ActorCore},
     camera::Camera,
+    physics_layers,
     weapon::{Weapon, WeaponStats},
 };
 use gfx::{
     shape::{circle, line},
     style::{Fill, LineCap, LineJoin, Stroke, Style},
-    tessellate, Color,
+    Color,
 };
 
 pub const PLAYER_RADIUS: f32 = 0.5;
@@ -17,8 +19,7 @@ pub const PLAYER_COLORS: [u32; 4] = [0x2979FFFF, 0xFF5252FF, 0x66BB6AFF, 0xFFEB3
 
 pub struct Player {
     pub slot: usize,
-    pub body: BodyHandle,
-    pub facing: Vec2,
+    pub actor: ActorCore,
     pub health: f32,
     pub color: Color,
     pub weapon: Weapon,
@@ -28,19 +29,21 @@ pub struct Player {
 
 impl Player {
     pub fn new(slot: usize, start_pos: Vec2, physics: &mut PhysicsWorld) -> Self {
+        let (collision_layers, collision_mask) = physics_layers::player_collision();
         let body = physics.add_body(Body {
             position: start_pos,
             velocity: Vec2::ZERO,
             mass: 1.0,
             restitution: 0.3,
+            collision_layers,
+            collision_mask,
             collider: Collider::Circle {
                 radius: PLAYER_RADIUS,
             },
         });
         Self {
             slot,
-            body,
-            facing: Vec2::X,
+            actor: ActorCore::new(body),
             health: 100.0,
             color: Color::hex(PLAYER_COLORS[slot.min(PLAYER_COLORS.len() - 1)]),
             weapon: Weapon::new(WeaponStats::default()),
@@ -49,19 +52,18 @@ impl Player {
     }
 }
 
-pub fn draw_players(
-    players: &[Player],
-    physics: &PhysicsWorld,
-    driver: &mut dyn gfx::GraphicsDriver,
-    camera: &Camera,
-) {
-    for player in players {
-        if player.health <= 0.0 {
-            continue;
+impl Actor for Player {
+    fn actor(&self) -> &ActorCore {
+        &self.actor
+    }
+
+    fn draw(&self, physics: &PhysicsWorld, driver: &mut dyn gfx::GraphicsDriver, camera: &Camera) {
+        if self.health <= 0.0 {
+            return;
         }
-        let pos = physics.body(player.body).position;
+        let pos = physics.body(self.actor.body).position;
         let ndc_pos = camera.world_to_ndc(pos);
-        let aim_end = camera.world_to_ndc(pos + player.facing * 2.0);
+        let aim_end = camera.world_to_ndc(pos + self.actor.facing * 2.0);
 
         draw_shape(
             driver,
@@ -79,7 +81,7 @@ pub fn draw_players(
             driver,
             &circle(ndc_pos, camera.scale(PLAYER_RADIUS)),
             &Style {
-                fill: Some(Fill::Solid(player.color)),
+                fill: Some(Fill::Solid(self.color)),
                 stroke: Some(Stroke {
                     color: Color::hex(0x000000FF),
                     width: 0.008,
@@ -89,17 +91,5 @@ pub fn draw_players(
             },
             Mat3::IDENTITY,
         );
-    }
-}
-
-fn draw_shape(
-    driver: &mut dyn gfx::GraphicsDriver,
-    path: &gfx::Path,
-    style: &gfx::Style,
-    transform: Mat3,
-) {
-    for mesh in tessellate(path, style) {
-        let handle = driver.upload_mesh(&mesh.vertices, &mesh.indices);
-        driver.draw_mesh(handle, transform, [1.0, 1.0, 1.0, 1.0]);
     }
 }

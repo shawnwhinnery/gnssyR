@@ -1,4 +1,4 @@
-use gfx::driver::{GraphicsDriver, MeshHandle, Vertex};
+use gfx::driver::{GraphicsDriver, MeshHandle, TextureHandle, Vertex};
 use glam::Mat3;
 use input::event::{Button, InputEvent};
 use input::player::PlayerId;
@@ -31,6 +31,12 @@ impl GraphicsDriver for SpyDriver {
         0
     }
     fn draw_mesh(&mut self, _m: MeshHandle, _t: Mat3, _c: [f32; 4]) {}
+
+    fn upload_texture(&mut self, _p: &[u32], _w: u32, _h: u32) -> TextureHandle {
+        0
+    }
+    fn free_texture(&mut self, _h: TextureHandle) {}
+    fn draw_bitmap(&mut self, _t: TextureHandle, _m: Mat3, _c: [f32; 4]) {}
 
     fn resize(&mut self, _w: u32, _h: u32) {}
     fn backend_name(&self) -> &'static str {
@@ -100,6 +106,11 @@ fn driver_call_order_single_frame() {
             0
         }
         fn draw_mesh(&mut self, _: MeshHandle, _: Mat3, _: [f32; 4]) {}
+        fn upload_texture(&mut self, _: &[u32], _: u32, _: u32) -> TextureHandle {
+            0
+        }
+        fn free_texture(&mut self, _: TextureHandle) {}
+        fn draw_bitmap(&mut self, _: TextureHandle, _: Mat3, _: [f32; 4]) {}
         fn resize(&mut self, _: u32, _: u32) {}
         fn backend_name(&self) -> &'static str {
             "spy"
@@ -230,6 +241,11 @@ fn multiple_frames_call_counts() {
             0
         }
         fn draw_mesh(&mut self, _: MeshHandle, _: Mat3, _: [f32; 4]) {}
+        fn upload_texture(&mut self, _: &[u32], _: u32, _: u32) -> TextureHandle {
+            0
+        }
+        fn free_texture(&mut self, _: TextureHandle) {}
+        fn draw_bitmap(&mut self, _: TextureHandle, _: Mat3, _: [f32; 4]) {}
         fn resize(&mut self, _: u32, _: u32) {}
         fn backend_name(&self) -> &'static str {
             "spy"
@@ -441,6 +457,11 @@ fn factory_driver_is_used_for_frames() {
             0
         }
         fn draw_mesh(&mut self, _: MeshHandle, _: Mat3, _: [f32; 4]) {}
+        fn upload_texture(&mut self, _: &[u32], _: u32, _: u32) -> TextureHandle {
+            0
+        }
+        fn free_texture(&mut self, _: TextureHandle) {}
+        fn draw_bitmap(&mut self, _: TextureHandle, _: Mat3, _: [f32; 4]) {}
         fn resize(&mut self, _: u32, _: u32) {}
         fn backend_name(&self) -> &'static str {
             "spy"

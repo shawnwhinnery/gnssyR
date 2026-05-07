@@ -1,6 +1,9 @@
 use crate::Collider;
 use glam::Vec2;
 
+/// Layers/mask value that matches every other filter (tests and “collide with everything”).
+pub const COLLISION_FILTER_MATCH_ALL: u32 = !0;
+
 /// Opaque index into a [`PhysicsWorld`]. Cheaply copyable.
 ///
 /// Using a handle after calling `remove_body` panics.
@@ -18,6 +21,11 @@ pub struct Body {
     pub mass: f32,
     /// Bounciness coefficient in `[0.0, 1.0]`.
     pub restitution: f32,
+    /// Bitmask of categories this body belongs to.
+    pub collision_layers: u32,
+    /// Bitmask of categories this body tests against. A pair is processed only when
+    /// `(self.collision_layers & other.collision_mask) != 0 && (other.collision_layers & self.collision_mask) != 0`.
+    pub collision_mask: u32,
     /// Collision shape in local space.
     pub collider: Collider,
 }
@@ -26,5 +34,12 @@ impl Body {
     /// True when the body has infinite mass and will not be moved by impulses.
     pub fn is_static(&self) -> bool {
         self.mass.is_infinite()
+    }
+
+    /// Whether this body and `other` participate in collision detection/resolution together.
+    #[inline]
+    pub fn collides_with(&self, other: &Body) -> bool {
+        (self.collision_layers & other.collision_mask) != 0
+            && (other.collision_layers & self.collision_mask) != 0
     }
 }

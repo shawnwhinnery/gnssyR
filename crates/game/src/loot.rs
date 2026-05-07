@@ -102,6 +102,7 @@ pub fn random_weapon_stats(rng: &mut impl Rng) -> WeaponStats {
         piercing: roll_tier(TIERS_PIERCING, rng),
         damage_total: DAMAGE_TOTAL.roll(rng),
         recoil_force: RECOIL_FORCE.roll(rng),
+        ..WeaponStats::default()
     }
 }
 

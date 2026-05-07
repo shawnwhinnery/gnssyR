@@ -1,6 +1,9 @@
 use crate::buffer::MeshPool;
 use crate::pipeline::FillPipeline;
-use gfx::driver::{GraphicsDriver, MeshHandle, Vertex};
+use crate::texture_store::TextureStore;
+use crate::textured_pipeline::{TexturedPipeline, TexturedVertex};
+use gfx::aspect_projection;
+use gfx::driver::{GraphicsDriver, MeshHandle, TextureHandle, Vertex};
 use glam::Mat3;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use wgpu::util::DeviceExt;
@@ -44,6 +47,12 @@ struct DrawCall {
     tint: [f32; 4],
 }
 
+struct TexturedDrawCall {
+    handle: TextureHandle,
+    transform: Mat3,
+    tint: [f32; 4],
+}
+
 // ---------------------------------------------------------------------------
 // Pending egui frame data (stored between prepare_egui and end_frame)
 // ---------------------------------------------------------------------------
@@ -68,6 +77,11 @@ pub struct WgpuDriver {
     pipeline: FillPipeline,
     mesh_pool: MeshPool,
     draw_calls: Vec<DrawCall>,
+    textured_pipeline: TexturedPipeline,
+    texture_store: TextureStore,
+    textured_draw_calls: Vec<TexturedDrawCall>,
+    bitmap_quad_vertex: wgpu::Buffer,
+    bitmap_quad_index: wgpu::Buffer,
     clear_color: wgpu::Color,
     current_texture: Option<wgpu::SurfaceTexture>,
     egui_renderer: egui_wgpu::Renderer,
@@ -129,7 +143,39 @@ impl WgpuDriver {
         surface.configure(&device, &config);
 
         let pipeline = FillPipeline::new(&device, format);
+        let textured_pipeline = TexturedPipeline::new(&device, format);
+        let texture_store = TextureStore::new(&device);
         let egui_renderer = egui_wgpu::Renderer::new(&device, format, None, 1, false);
+
+        let quad_verts = [
+            TexturedVertex {
+                position: [-1.0, -1.0],
+                uv: [0.0, 1.0],
+            },
+            TexturedVertex {
+                position: [1.0, -1.0],
+                uv: [1.0, 1.0],
+            },
+            TexturedVertex {
+                position: [1.0, 1.0],
+                uv: [1.0, 0.0],
+            },
+            TexturedVertex {
+                position: [-1.0, 1.0],
+                uv: [0.0, 0.0],
+            },
+        ];
+        let quad_idx: [u32; 6] = [0, 1, 2, 0, 2, 3];
+        let bitmap_quad_vertex = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("bitmap_quad_verts"),
+            contents: bytemuck::cast_slice(&quad_verts),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let bitmap_quad_index = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("bitmap_quad_idx"),
+            contents: bytemuck::cast_slice(&quad_idx),
+            usage: wgpu::BufferUsages::INDEX,
+        });
 
         Self {
             device,
@@ -139,29 +185,16 @@ impl WgpuDriver {
             pipeline,
             mesh_pool: MeshPool::default(),
             draw_calls: Vec::new(),
+            textured_pipeline,
+            texture_store,
+            textured_draw_calls: Vec::new(),
+            bitmap_quad_vertex,
+            bitmap_quad_index,
             clear_color: wgpu::Color::BLACK,
             current_texture: None,
             egui_renderer,
             pending_egui: None,
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Aspect-ratio projection
-// ---------------------------------------------------------------------------
-
-/// Returns a scale matrix that maps logical square space (-1..1 × -1..1) to
-/// a centered square viewport inside the actual (possibly non-square) surface.
-fn aspect_projection(width: u32, height: u32) -> Mat3 {
-    let w = width as f32;
-    let h = height as f32;
-    if w > h {
-        Mat3::from_scale(glam::Vec2::new(h / w, 1.0))
-    } else if h > w {
-        Mat3::from_scale(glam::Vec2::new(1.0, w / h))
-    } else {
-        Mat3::IDENTITY
     }
 }
 
@@ -179,6 +212,7 @@ impl GraphicsDriver for WgpuDriver {
         // Recycle all mesh buffers from the previous frame.
         self.mesh_pool.clear();
         self.draw_calls.clear();
+        self.textured_draw_calls.clear();
         self.pending_egui = None;
 
         match self.surface.get_current_texture() {
@@ -208,6 +242,23 @@ impl GraphicsDriver for WgpuDriver {
             handle: mesh,
             transform,
             tint: color,
+        });
+    }
+
+    fn upload_texture(&mut self, pixels: &[u32], width: u32, height: u32) -> TextureHandle {
+        self.texture_store
+            .upload(&self.device, &self.queue, pixels, width, height)
+    }
+
+    fn free_texture(&mut self, handle: TextureHandle) {
+        self.texture_store.free(handle);
+    }
+
+    fn draw_bitmap(&mut self, texture: TextureHandle, transform: Mat3, tint: [f32; 4]) {
+        self.textured_draw_calls.push(TexturedDrawCall {
+            handle: texture,
+            transform,
+            tint,
         });
     }
 
@@ -278,6 +329,77 @@ impl GraphicsDriver for WgpuDriver {
                 pass.set_vertex_buffer(0, mesh.vertex_buf.slice(..));
                 pass.set_index_buffer(mesh.index_buf.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..mesh.index_count, 0, 0..1);
+            }
+        }
+
+        // Textured bitmap pass (after vector fills, before egui).
+        if !self.textured_draw_calls.is_empty() {
+            let textured_bind_groups: Vec<wgpu::BindGroup> = {
+                let mut v = Vec::new();
+                for draw in &self.textured_draw_calls {
+                    let Some(stored) = self.texture_store.get(draw.handle) else {
+                        continue;
+                    };
+                    let uniforms = Uniforms::new(proj * draw.transform, draw.tint);
+                    let buf = self
+                        .device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("textured_draw_uniforms"),
+                            contents: bytemuck::bytes_of(&uniforms),
+                            usage: wgpu::BufferUsages::UNIFORM,
+                        });
+                    let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("textured_draw_bind"),
+                        layout: &self.textured_pipeline.bind_group_layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: buf.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(&stored.view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::Sampler(
+                                    self.texture_store.sampler(),
+                                ),
+                            },
+                        ],
+                    });
+                    v.push(bg);
+                }
+                v
+            };
+
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("bitmap_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+
+                pass.set_pipeline(&self.textured_pipeline.pipeline);
+
+                for bind_group in textured_bind_groups.iter() {
+                    pass.set_bind_group(0, bind_group, &[]);
+                    pass.set_vertex_buffer(0, self.bitmap_quad_vertex.slice(..));
+                    pass.set_index_buffer(
+                        self.bitmap_quad_index.slice(..),
+                        wgpu::IndexFormat::Uint32,
+                    );
+                    pass.draw_indexed(0..6, 0, 0..1);
+                }
             }
         }
 

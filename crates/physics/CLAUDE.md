@@ -13,8 +13,8 @@ It provides collision detection and impulse-based resolution for use by the `gam
   - `crates/physics/src/aabb.rs` — AABB broadphase helper
   - `crates/physics/src/contact.rs` — `Contact` output type
   - `crates/physics/src/narrow.rs` — SAT dispatch and all narrowphase algorithms
-  - `crates/physics/src/body.rs` — `Body` and `BodyHandle`
-  - `crates/physics/src/world.rs` — `PhysicsWorld` simulation loop
+  - `crates/physics/src/body.rs` — `Body`, `BodyHandle`, `COLLISION_FILTER_MATCH_ALL`, collision layer/mask + `Body::collides_with`
+  - `crates/physics/src/world.rs` — `PhysicsWorld` simulation loop; `try_body` for non-panicking access after `remove_body`
 - Tests: `crates/physics/tests/collision.rs`
 
 ## Non-Negotiable Invariants
@@ -23,7 +23,8 @@ It provides collision detection and impulse-based resolution for use by the `gam
 - `circle_convex` and `circle_mesh` return a normal pointing **from polygon toward circle** (polygon-centric). The dispatch table corrects orientation via `flip` so the public API remains A→B.
 - Static bodies (`mass == f32::INFINITY`) receive zero impulse and zero positional correction. `inv_mass = 0.0` enforces this — never special-case it any other way.
 - Mesh–Mesh collision is explicitly unsupported and returns `None`. Do not implement it without updating the spec.
-- `BodyHandle` is an opaque index. Using one after `remove_body` is a documented panic, not undefined behaviour.
+- **Collision layers** — `Body::collides_with` gates pairs before AABB/narrowphase: `(A.layers & B.mask) && (B.layers & A.mask)`. `COLLISION_FILTER_MATCH_ALL` (`!0`) on both fields preserves legacy “everything collides” behaviour.
+- `BodyHandle` is an opaque index. Using one after `remove_body` with `body` / `body_mut` is a documented panic; **`try_body`** returns `None` if the slot is empty (game code uses this for projectile overlap and seeking targets after actors despawn).
 
 ## Collision Normal Convention
 

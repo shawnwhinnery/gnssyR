@@ -45,6 +45,11 @@ impl PhysicsWorld {
             .expect("BodyHandle is invalid (body was removed)")
     }
 
+    /// Like [`body`](Self::body), but returns `None` if the handle was removed.
+    pub fn try_body(&self, handle: BodyHandle) -> Option<&Body> {
+        self.bodies.get(handle.0).and_then(|b| b.as_ref())
+    }
+
     /// Mutable access to a body.
     ///
     /// # Panics
@@ -85,6 +90,10 @@ impl PhysicsWorld {
                     (Some(a), Some(b)) => (a, b),
                     _ => continue,
                 };
+
+                if !bi.collides_with(bj) {
+                    continue;
+                }
 
                 // Broad phase: world-space AABB overlap
                 let aabb_i = bi.collider.local_aabb().translate(bi.position);

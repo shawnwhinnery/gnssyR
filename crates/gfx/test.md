@@ -193,6 +193,15 @@ A shape inside a group with transform `T_group`, with shape local transform `T_s
 is drawn with the combined transform `T_group ∘ T_shape`.
 **Requires tessellation.**
 
+
+---
+
+## Bitmap / GraphicsDriver (SpyDriver)
+
+### `texture_handle_independent_of_mesh`
+In one frame, first `upload_mesh` handle and first `upload_texture` handle are unrelated
+numeric values (SpyDriver returns mesh 0,1,… and texture 1,2,…).
+
 ---
 
 ## Parametric Path API

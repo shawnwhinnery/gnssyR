@@ -25,7 +25,13 @@
       "Bash(git -C /var/home/bazzite/.worklife/repos/gnssyr/main add GAME_ARCHITECTURE.md)",
       "Bash(git -C /var/home/bazzite/.worklife/repos/gnssyr/main commit -m ' *)",
       "Bash(git -C /var/home/bazzite/.worklife/repos/gnssyr/main push)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git fetch *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git pull *)",
+      "Bash(git merge *)",
+      "Bash(cargo doc *)",
+      "Read(//Users/shawnwhinnery/.cargo/registry/src/**)"
     ]
   }
 }

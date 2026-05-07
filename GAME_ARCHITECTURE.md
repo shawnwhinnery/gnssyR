@@ -16,7 +16,8 @@ unchanged. The sandbox scene is the validation target throughout.
 - **No framework magic.** Systems are functions, not traits. Entities are structs,
   not handle IDs.
 - **Consistent with physics.** `PhysicsWorld` already uses a handle-based arena
-  (`BodyHandle`). Game-side arenas follow the same idiom.
+  (`BodyHandle`). Each `Body` also carries **collision layer** bitmasks; the game
+  crate centralizes presets in `physics_layers.rs`. Game-side arenas follow the same idiom.
 - **Test-friendly.** `World::new()` takes no graphics or window handles. Any
   tick-level test can construct a `World`, call `world.tick(events, dt)`, and
   assert on state — no GPU, no event loop.
@@ -35,16 +36,17 @@ crates/game/src/
   camera.rs                     — Camera: world→NDC transform; HALF_VIEW constant lives here
   input.rs                      — InputSnapshot: per-player intent distilled from raw events
   player.rs                     — Player struct; tick_players / draw_players fns
-  weapon.rs                     — WeaponStats, Weapon, Projectile; fire / tick / draw fns
+  physics_layers.rs             — collision_layers / collision_mask presets for Body (walls, actors, projectiles)
+  weapon.rs                     — WeaponStats, ProjectileBehavior, Weapon, Projectile / ProjectileMotion; spawn + integrate in world.rs
+  world.rs                      — World: PhysicsWorld, tick, spawn by behavior, scripted integration, damage, cleanup
   hud.rs                        — FPS / backend / mouse-pos HUD helpers
   enemy/
-    mod.rs                      — Enemy trait (body, health, tick_ai, draw)
+    mod.rs                      — Enemy trait (actor, health, tick_ai, weapon_stats, projectile_behavior, draw)
     dummy.rs                    — DummyEnemy: stationary target that absorbs hits
   scenes/
     mod.rs                      — Scene trait + SceneTransition enum
     sandbox/
-      mod.rs                    — SandboxScene: owns World + PauseState; weapon editor UI
-      world.rs                  — World struct; owns PhysicsWorld, players, enemies, projectiles
+      mod.rs                    — SandboxScene: owns World + PauseState; Primary weapon + other sandbox egui tabs
     main_menu/
       mod.rs                    — MainMenuScene: title screen with Play / Quit
     level_select/
@@ -118,11 +120,14 @@ Player position is **not stored on `Player`** — it lives in the `Body` inside
 ```rust
 impl Player {
     pub fn new(slot: usize, start_pos: Vec2, physics: &mut PhysicsWorld) -> Self {
+        let (collision_layers, collision_mask) = crate::physics_layers::player_collision();
         let body = physics.add_body(Body {
             position:    start_pos,
             velocity:    Vec2::ZERO,
             mass:        1.0,
             restitution: 0.3,
+            collision_layers,
+            collision_mask,
             collider:    Collider::Circle { radius: PLAYER_RADIUS },
         });
         Player { slot, body, facing: Vec2::X, health: 100.0, color: PLAYER_COLORS[slot] }
@@ -219,7 +224,7 @@ App::run closure receives (world, events)
         ├─ 2. tick_players(&players, &snapshot, &mut physics)
         │       └─ sets body.velocity from move_dir * PLAYER_SPEED
         ├─ 3. physics.step(dt)
-        │       └─ integrates positions, resolves collisions
+        │       └─ integrates positions; filters pairs by collision layers/mask; AABB; SAT; impulse resolution
         └─ 4. (future) tick_bullets, handle_pickups, ...
 
 App::run closure receives (world, driver)

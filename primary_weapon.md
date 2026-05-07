@@ -15,22 +15,39 @@ To support future inventory and parts, stats are separated into three layers:
 Defines *how* projectiles are spawned when the trigger is pulled:
 - `fire_rate`: Rounds per second.
 - `projectiles_per_shot`: Number of projectiles spawned simultaneously.
-- `shot_arc`: Degrees/radians to spread projectiles across (0 = straight, 360 = circle).
+- `shot_arc`: Radians to spread projectiles across (0 = straight; up to 360° in editor).
 - `burst_count`: Number of rounds fired per trigger pull.
 - `burst_delay`: Time between rounds in a burst.
-- `jitter`: Random variance in projectile direction/speed.
-- `spawn_offsets`: Side/forward offsets for multi-barrel or wing-mounted patterns.
+- `jitter`: Per-projectile random angular spread (half-width, radians).
+- **`kickback`**: Each volley adds to runtime `Weapon::kickback` (radians of extra spread); **no cap**; combined with `jitter` in `volley_directions`.
+- **`stability`**: Seconds τ — while the trigger is not held, `kickback` decays as `exp(-dt / τ)` (smaller τ clears bloom faster).
+- `spawn_offsets`: Planned — side/forward offsets for multi-barrel or wing-mounted patterns.
 
-### Projectile Stats
-Defines the physical properties of the projectile:
-- `speed`: Muzzle velocity.
-- `acceleration`: Change in speed over time (e.g., for rockets).
-- `size`: Collision radius.
-- `lifetime`: Max duration in seconds.
-- `piercing`: Number of hits before despawn.
+### Projectile stats (`WeaponStats`, snapshot per shot)
+- `projectile_speed`: Muzzle / along-path speed (world units per second); for `Rocket`, also the initial speed before acceleration.
+- `projectile_size`: Collision radius.
+- `projectile_lifetime`: Max duration in seconds.
+- `piercing`: **Scripted** shots only — extra **actor** hits before despawn (player shots → enemies; enemy shots → players). **Walls always remove** scripted projectiles. **Ignored** for `ProjectileBehavior::Physics` (physics shots use TTL, friction/min speed, and optional max wall bounces instead).
+- **Oscillating:** `oscillation_frequency` (Hz), `oscillation_magnitude` (world units lateral).
+- **Physics projectile:** `physics_max_bounces` (0 = unlimited), `physics_friction` (speed damping), `physics_min_speed` (despawn threshold).
+- **Rocket:** `rocket_acceleration`, `kinetic_damage_scale` (adds `kinetic_damage_scale * speed` to impact damage).
+- **Seeking:** `seeking_turn_radius` (smaller = tighter turns; max turn rate ≈ `speed / radius` rad/s), `seeking_acquire_half_angle` (forward cone for picking / re-picking a `BodyHandle` target).
+
+### Projectile behavior (`Weapon` + `ProjectileBehavior`)
+`Weapon::projectile_behavior` chooses how new shots move. Implemented in `crates/game/src/world.rs` + `weapon.rs`:
+
+| Behavior | Summary |
+|----------|---------|
+| `Physics` | Full rigid body in `PhysicsWorld`; bouncy; post-step friction and min-speed cull. |
+| `Bullet` | Straight kinematic ray; geometric hits. |
+| `Rocket` | Accelerates along heading; damage scales with speed. |
+| `Oscillating` | Forward motion + perpendicular sine wave. |
+| `Seeking` | Fires along **aim**; tracks `seek_target` with turn-rate limit; re-acquires if the target body is removed (`PhysicsWorld::try_body`). |
+
+Sandbox **Primary weapon** tab: `egui::ComboBox` for behavior plus grouped rows for oscillating / physics / rocket / seeking stats (`weapon_editor` in `sandbox/mod.rs`).
 
 ### Elemental Damage Pool
-- `damage_total`: Flat base damage value.
+- `damage_total`: Flat base damage per projectile hit (implemented).
 - `ratios`: An array of 8 weights corresponding to the `Element` enum.
 - `affinity`: A specific modifier that re-allocates ratios without changing `damage_total`.
 
@@ -92,29 +109,23 @@ The `Weapon` struct tracks internal state to handle complex firing patterns:
 
 ## 8. Implementation Details
 
-### Physics Integration
-- **Collision Filtering**: Projectiles use a specific collision group to avoid colliding with the owner or other friendly projectiles.
-- **Recoil**: When a projectile is spawned, a force vector `facing * -recoil_force` is applied to the player's `Body`.
+### Physics integration (`world.rs` + `physics_layers.rs`)
+- **Collision layers**: `Physics` projectiles get `projectile_player_owned` / `projectile_enemy_owned` masks (see `physics_layers.rs` and `crates/physics/index.md` **Body**). Scripted shots have **no** projectile `Body`; hits use `narrow::detect` against walls and actor bodies.
+- **Recoil**: On each volley, `facing * -recoil_force` is added to the shooter’s body velocity.
 
-### Tick Lifecycle
-1. **`tick_weapons`**: 
-    - If `reloading`, decrement timer. 
-    - If `Burst`, check `next_burst_time` and spawn.
-    - If `Idle` and `fire_intent`, check ammo and transition to `Burst` or `Cooldown`.
-2. **`spawn_projectiles`**: 
-    - Iterates `projectiles_per_shot`.
-    - Calculates direction using `facing + arc_offset + jitter`.
-    - Adds `Body` to `PhysicsWorld` with `Projectile` metadata in the arena.
-3. **`tick_projectiles`**: 
-    - Applies `Homing` or `Acceleration` forces to the physics bodies.
-    - Checks `physics.contacts()` for impacts.
-    - If impact: handle `Bouncing`, `Piercing`, or `Exploding`.
-4. **`cleanup_projectiles`**: 
-    - Removes projectiles with `lifetime <= 0` or `piercing <= 0`.
-    - Synchronizes removal with `PhysicsWorld`.
+### Tick order (high level, `World::tick`)
+1. Weapons / AI produce spawn batches (`WeaponStats` + `ProjectileBehavior` snapshot at spawn).
+2. `PhysicsWorld::step` — moves rigid bodies (including `Physics` projectiles).
+3. Physics-projectile friction, wall-bounce counting; **then** `integrate_scripted_projectiles` (Bullet / Rocket / Oscillating / Seeking).
+4. Lifetime decay; `resolve_damage` (contacts for physics, circle tests for scripted).
+5. `cleanup_dead_enemies`; then **`cleanup_projectiles` uses a fresh enemy handle list** so dead enemies never leave stale `BodyHandle`s in overlap paths.
+
+## Sandbox UI
+
+The **Primary weapon** tab exposes every `WeaponStats` field (labels match struct names), **`projectile_behavior`** (`ComboBox`), grouped sections (firing, shot pattern, spread & kickback, projectile, oscillating, physics projectile, rocket, seeking, impact), and read-only **kickback (live)**.
 
 ## Phase 1 Implementation Tasks
-1. **Scaffold `weapon.rs`**: Define `WeaponStats`, `Weapon`, and `Projectile` structs.
+1. **Scaffold `weapon.rs`**: Define `WeaponStats`, `Weapon`, and `Projectile` structs. *(Done — extended with kickback / stability as above.)*
 2. **Integrate `Weapon` into `Player`**: Update `player.rs` to include a `Weapon` field.
 3. **Basic Spawning**: In `world.rs`, handle the `fire` intent by calling a new `spawn_projectile` function.
 4. **Projectile Tick**: Add `tick_projectiles` to `world.rs` to move projectiles and decrement lifetime.

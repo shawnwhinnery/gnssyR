@@ -11,7 +11,7 @@ A local couch co-op 2D game (up to 4 players) with a web IO-game aesthetic. Writ
 | `gfx-software` | CPU/headless driver for tests — exposes a pixel buffer |
 | `input` | Unified input for up to 4 players; `SimulatedBackend` for tests |
 | `window` | `App::run` entry point, winit event loop |
-| `game` | Game loop and mechanics (placeholder) |
+| `game` | Game loop and mechanics: `World`, `SandboxScene` with egui (**Primary weapon** tuning, enemies, inventory), `Weapon` / `Projectile`. |
 
 ## Running
 
@@ -40,4 +40,3 @@ UPDATE_SNAPSHOTS=1 cargo test -p game
 Commit the updated `gfx_scene.bin` alongside your code changes to lock in the new baseline.
 
 **Investigating a failure** — when the test fails it writes the actual output to `gfx_scene.actual.bin` in the same directory so you can compare the two files side-by-side.
-# gnssyR

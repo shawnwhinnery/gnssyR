@@ -107,7 +107,6 @@ impl InputSnapshot {
     pub fn player(&self, idx: usize) -> PlayerIntent {
         self.0[idx]
     }
-
 }
 
 #[derive(Default)]

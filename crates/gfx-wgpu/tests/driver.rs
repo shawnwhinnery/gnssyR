@@ -8,7 +8,7 @@
 // On Linux without a real GPU, set WGPU_ADAPTER_NAME=llvmpipe (requires
 // mesa-vulkan-drivers / lavapipe) to run against a software Vulkan renderer.
 
-use gfx::driver::{GraphicsDriver, Vertex};
+use gfx::driver::{GraphicsDriver, TextureHandle, Vertex};
 use gfx_wgpu::WgpuDriver;
 use glam::{Mat3, Vec2};
 
@@ -203,4 +203,22 @@ fn surface_size_reflects_resize() {
     let mut d = headless_driver();
     d.resize(640, 480);
     assert_eq!(d.surface_size(), (640, 480));
+}
+
+// ---------------------------------------------------------------------------
+// Bitmap (GPU)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "requires GPU adapter"]
+fn upload_texture_draw_bitmap_no_panic() {
+    let mut d = headless_driver();
+    let px = vec![0xFF_FF_00_00u32; 4];
+    let tex: TextureHandle = d.upload_texture(&px, 2, 2);
+    d.begin_frame();
+    d.clear([0.0, 0.0, 0.0, 1.0]);
+    d.draw_bitmap(tex, Mat3::IDENTITY, [1.0, 1.0, 1.0, 1.0]);
+    d.end_frame();
+    d.present();
+    d.free_texture(tex);
 }

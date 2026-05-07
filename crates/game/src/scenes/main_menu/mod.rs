@@ -1,6 +1,6 @@
 use input::{
-    InputEvent,
     event::{Button, KeyCode},
+    InputEvent,
 };
 use std::cell::Cell;
 
@@ -36,7 +36,12 @@ impl Default for MainMenuScene {
 impl Scene for MainMenuScene {
     fn tick(&mut self, events: &[InputEvent]) -> Option<SceneTransition> {
         for event in events {
-            if let InputEvent::Button { button, pressed: true, .. } = event {
+            if let InputEvent::Button {
+                button,
+                pressed: true,
+                ..
+            } = event
+            {
                 match button {
                     Button::Key(KeyCode::Enter) | Button::Key(KeyCode::Space) => {
                         self.start_game.set(true);
@@ -67,18 +72,12 @@ impl Scene for MainMenuScene {
 
     fn draw_ui(&self, ctx: &egui::Context) {
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::default()
-                    .fill(egui::Color32::from_rgb(12, 12, 20)),
-            )
+            .frame(egui::Frame::default().fill(egui::Color32::from_rgb(12, 12, 20)))
             .show(ctx, |ui| {
                 let available = ui.available_size();
 
                 let center = ui.clip_rect().center();
-                let rect = egui::Rect::from_center_size(
-                    center,
-                    egui::vec2(320.0, available.y),
-                );
+                let rect = egui::Rect::from_center_size(center, egui::vec2(320.0, available.y));
                 ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect), |ui| {
                     ui.vertical_centered(|ui| {
                         ui.add_space(available.y * 0.25);
@@ -103,9 +102,7 @@ impl Scene for MainMenuScene {
                         if ui
                             .add_sized(
                                 [200.0, 48.0],
-                                egui::Button::new(
-                                    egui::RichText::new("Start Game").size(22.0),
-                                ),
+                                egui::Button::new(egui::RichText::new("Start Game").size(22.0)),
                             )
                             .clicked()
                         {
@@ -117,9 +114,7 @@ impl Scene for MainMenuScene {
                         if ui
                             .add_sized(
                                 [200.0, 48.0],
-                                egui::Button::new(
-                                    egui::RichText::new("Start Sandbox").size(22.0),
-                                ),
+                                egui::Button::new(egui::RichText::new("Start Sandbox").size(22.0)),
                             )
                             .clicked()
                         {
@@ -131,9 +126,7 @@ impl Scene for MainMenuScene {
                         if ui
                             .add_sized(
                                 [200.0, 48.0],
-                                egui::Button::new(
-                                    egui::RichText::new("Quit").size(22.0),
-                                ),
+                                egui::Button::new(egui::RichText::new("Quit").size(22.0)),
                             )
                             .clicked()
                         {

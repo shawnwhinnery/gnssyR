@@ -98,16 +98,23 @@ detect(pos_a, col_a, pos_b, col_b) -> Option<Contact>
 
 ```
 Body {
-    position:    Vec2,
-    velocity:    Vec2,
-    mass:        f32,        // f32::INFINITY for static/kinematic bodies
-    restitution: f32,        // [0.0, 1.0] — bounciness coefficient
-    collider:    Collider,
+    position:          Vec2,
+    velocity:          Vec2,
+    mass:              f32,        // f32::INFINITY for static/kinematic bodies
+    restitution:       f32,        // [0.0, 1.0] — bounciness coefficient
+    collision_layers:  u32,        // category bits this body is in
+    collision_mask:    u32,        // which category bits this body collides with
+    collider:          Collider,
 }
 ```
 
 - `Body::is_static()` — true when `mass == f32::INFINITY`.
 - Static bodies participate in collision detection but receive no impulse or positional correction.
+- **Collision layers** — before broadphase, a pair is skipped unless  
+  `(A.collision_layers & B.collision_mask) ≠ 0` **and**  
+  `(B.collision_layers & A.collision_mask) ≠ 0`.  
+  Use `COLLISION_FILTER_MATCH_ALL` (`!0`) for both fields when every pair should interact (tests, legacy).
+- `Body::collides_with(&Body)` — implements the same predicate for callers.
 
 ---
 
@@ -117,7 +124,7 @@ Body {
 BodyHandle(usize)
 ```
 
-Opaque index into `PhysicsWorld`. Cheaply copyable. Using a handle after `remove_body` is a panic.
+Opaque index into `PhysicsWorld`. Cheaply copyable. Using a handle after `remove_body` with `body` / `body_mut` is a panic; use **`try_body`** when the body may already be gone.
 
 ---
 
@@ -128,6 +135,7 @@ PhysicsWorld::new() -> Self
 PhysicsWorld::add_body(body: Body) -> BodyHandle
 PhysicsWorld::remove_body(handle: BodyHandle)
 PhysicsWorld::body(handle) -> &Body
+PhysicsWorld::try_body(handle) -> Option<&Body>
 PhysicsWorld::body_mut(handle) -> &mut Body
 PhysicsWorld::step(dt: f32)
 PhysicsWorld::contacts() -> &[(BodyHandle, BodyHandle, Contact)]
@@ -138,7 +146,7 @@ PhysicsWorld::contacts() -> &[(BodyHandle, BodyHandle, Contact)]
 Executes one simulation tick:
 
 1. **Integrate** — for each dynamic body: `position += velocity * dt`.
-2. **Broadphase** — O(n²) AABB pair scan; discard non-overlapping pairs.
+2. **Broadphase** — O(n²) pair scan: for each unordered pair, apply **collision layer filter**, then AABB overlap; discard non-overlapping pairs.
 3. **Narrowphase** — `narrow::detect` on surviving pairs; collect contacts.
 4. **Resolution** — for each contact:
    - Compute relative velocity along the normal.
@@ -168,3 +176,5 @@ Executes one simulation tick:
 - `circle_mesh_hit` — circle penetrating a mesh triangle returns shallowest contact.
 - `world_bounce` — two circles collide; after `step` velocities reverse along normal.
 - `world_static` — dynamic circle vs static mesh; only dynamic body moves.
+- `world_contacts_cleared_between_steps` — contacts refresh each `step`.
+- `world_layers_skip_overlapping_pair` — layer/mask filter removes contacts even when AABBs overlap.

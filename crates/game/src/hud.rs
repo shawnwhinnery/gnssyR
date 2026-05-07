@@ -224,25 +224,60 @@ fn draw_glyph_scaled(
     });
 
     if mask & (1 << 6) != 0 {
-        seg(driver, Vec2::new(x + ins, y + h), Vec2::new(x + w - ins, y + h), &style);
+        seg(
+            driver,
+            Vec2::new(x + ins, y + h),
+            Vec2::new(x + w - ins, y + h),
+            &style,
+        );
     }
     if mask & (1 << 5) != 0 {
-        seg(driver, Vec2::new(x + w, y + h - ins), Vec2::new(x + w, y + half_h + ins), &style);
+        seg(
+            driver,
+            Vec2::new(x + w, y + h - ins),
+            Vec2::new(x + w, y + half_h + ins),
+            &style,
+        );
     }
     if mask & (1 << 4) != 0 {
-        seg(driver, Vec2::new(x + w, y + half_h - ins), Vec2::new(x + w, y + ins), &style);
+        seg(
+            driver,
+            Vec2::new(x + w, y + half_h - ins),
+            Vec2::new(x + w, y + ins),
+            &style,
+        );
     }
     if mask & (1 << 3) != 0 {
-        seg(driver, Vec2::new(x + ins, y), Vec2::new(x + w - ins, y), &style);
+        seg(
+            driver,
+            Vec2::new(x + ins, y),
+            Vec2::new(x + w - ins, y),
+            &style,
+        );
     }
     if mask & (1 << 2) != 0 {
-        seg(driver, Vec2::new(x, y + ins), Vec2::new(x, y + half_h - ins), &style);
+        seg(
+            driver,
+            Vec2::new(x, y + ins),
+            Vec2::new(x, y + half_h - ins),
+            &style,
+        );
     }
     if mask & (1 << 1) != 0 {
-        seg(driver, Vec2::new(x, y + half_h + ins), Vec2::new(x, y + h - ins), &style);
+        seg(
+            driver,
+            Vec2::new(x, y + half_h + ins),
+            Vec2::new(x, y + h - ins),
+            &style,
+        );
     }
     if mask & (1 << 0) != 0 {
-        seg(driver, Vec2::new(x + ins, y + half_h), Vec2::new(x + w - ins, y + half_h), &style);
+        seg(
+            driver,
+            Vec2::new(x + ins, y + half_h),
+            Vec2::new(x + w - ins, y + half_h),
+            &style,
+        );
     }
 }
 
