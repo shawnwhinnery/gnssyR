@@ -22,6 +22,8 @@ pub struct Player {
     pub health: f32,
     pub color: Color,
     pub weapon: Weapon,
+    /// Set when the player picks up a named weapon drop; None for the starting loadout.
+    pub weapon_name: Option<String>,
 }
 
 impl Player {
@@ -42,6 +44,7 @@ impl Player {
             health: 100.0,
             color: Color::hex(PLAYER_COLORS[slot.min(PLAYER_COLORS.len() - 1)]),
             weapon: Weapon::new(WeaponStats::default()),
+            weapon_name: None,
         }
     }
 }

@@ -9,6 +9,8 @@ use crate::{camera::Camera, weapon::WeaponStats};
 pub struct LootTable {
     pub min_drops: u32,
     pub max_drops: u32,
+    /// Probability [0.0, 1.0] that this enemy drops a weapon in addition to scrap.
+    pub weapon_drop_chance: f32,
 }
 
 pub trait Enemy {

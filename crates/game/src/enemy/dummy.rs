@@ -59,6 +59,7 @@ impl Dummy {
     }
 }
 
+
 impl Enemy for Dummy {
     fn body(&self) -> BodyHandle {
         self.body
@@ -77,7 +78,7 @@ impl Enemy for Dummy {
     }
 
     fn loot_table(&self) -> LootTable {
-        LootTable { min_drops: 1, max_drops: 3 }
+        LootTable { min_drops: 1, max_drops: 3, weapon_drop_chance: 0.15 }
     }
 
     fn tick_ai(

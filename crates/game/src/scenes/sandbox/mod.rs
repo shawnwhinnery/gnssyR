@@ -6,6 +6,8 @@ use input::InputEvent;
 use physics::{Body, Collider};
 
 use crate::{
+    loot,
+    namegen,
     pause::PauseState,
     scrap::{ScrapColor, ScrapShape},
     weapon::{WeaponFiringState, WeaponStats},
@@ -18,9 +20,11 @@ pub struct SandboxScene {
     world: World,
     pause: PauseState,
     stats_editor: RefCell<WeaponStats>,
+    weapon_name: RefCell<Option<String>>,
     slow_motion: Cell<bool>,
     enemy_spawn_requests: Cell<u32>,
     player_respawn_requested: Cell<bool>,
+    random_weapon_requested: Cell<bool>,
 }
 
 impl SandboxScene {
@@ -31,9 +35,11 @@ impl SandboxScene {
             world,
             pause: PauseState::new(),
             stats_editor: RefCell::new(WeaponStats::default()),
+            weapon_name: RefCell::new(None),
             slow_motion: Cell::new(false),
             enemy_spawn_requests: Cell::new(0),
             player_respawn_requested: Cell::new(false),
+            random_weapon_requested: Cell::new(false),
         }
     }
 }
@@ -124,6 +130,16 @@ impl Scene for SandboxScene {
     fn tick(&mut self, events: &[InputEvent]) -> Option<SceneTransition> {
         self.pause.tick(events);
         self.world.time_scale = if self.slow_motion.get() { 0.2 } else { 1.0 };
+
+        if self.random_weapon_requested.get() {
+            self.random_weapon_requested.set(false);
+            let mut rng = rand::thread_rng();
+            let stats = loot::random_weapon_stats(&mut rng);
+            let name = namegen::gun_name(&stats, &mut rng);
+            *self.stats_editor.borrow_mut() = stats;
+            *self.weapon_name.borrow_mut() = Some(name);
+        }
+
         if let Some(player) = self.world.players.first_mut() {
             player.weapon.stats = self.stats_editor.borrow().clone();
         }
@@ -291,6 +307,23 @@ impl Scene for SandboxScene {
                 if ui.add_sized([ui.available_width(), 24.0], btn).clicked() {
                     self.slow_motion.set(!slow);
                 }
+
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    let name = self.weapon_name.borrow();
+                    let label_text = name.as_deref().unwrap_or("Default Loadout");
+                    ui.label(
+                        egui::RichText::new(label_text)
+                            .italics()
+                            .color(egui::Color32::from_rgb(255, 210, 80)),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Roll Random").clicked() {
+                            self.random_weapon_requested.set(true);
+                        }
+                    });
+                });
 
                 ui.separator();
 

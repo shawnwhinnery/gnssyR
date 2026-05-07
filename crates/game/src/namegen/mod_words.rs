@@ -1,0 +1,45 @@
+// Mod names are purely combinatorial — adjective + noun from these pools.
+// Words are designed to evoke salvaged / improvised hardware.
+
+pub const MOD_ADJECTIVES: &[&str] = &[
+    "Corroded",
+    "Hardened",
+    "Volatile",
+    "Cracked",
+    "Reinforced",
+    "Scorched",
+    "Frozen",
+    "Charged",
+    "Ancient",
+    "Modified",
+    "Salvaged",
+    "Melted",
+    "Patched",
+    "Cursed",
+    "Spiked",
+    "Rusted",
+    "Hollow",
+    "Twisted",
+    "Overclocked",
+    "Fused",
+];
+
+pub const MOD_NOUNS: &[&str] = &[
+    "Magazine",
+    "Barrel",
+    "Clip",
+    "Chamber",
+    "Trigger",
+    "Stock",
+    "Grip",
+    "Scope",
+    "Sight",
+    "Frame",
+    "Receiver",
+    "Spring",
+    "Bolt",
+    "Pin",
+    "Shroud",
+    "Vent",
+    "Rail",
+];

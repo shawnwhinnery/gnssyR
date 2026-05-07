@@ -9,6 +9,7 @@ use crate::{
     enemy::{dummy::Dummy, Enemy, LootTable},
     hud,
     input::InputState,
+    loot::{self, WeaponDrop},
     player::{draw_players, Player, PLAYER_RADIUS},
     scrap::{draw_scrap, Inventory, Scrap, ScrapColor, ScrapShape},
     weapon::{Projectile, ProjectileOwner},
@@ -44,6 +45,7 @@ pub struct World {
     pub walls: Vec<Wall>,
     pub projectiles: Vec<Projectile>,
     pub scraps: Vec<Scrap>,
+    pub weapon_drops: Vec<WeaponDrop>,
     pub inventory: Inventory,
     pub camera: Camera,
     start: std::time::Instant,
@@ -66,6 +68,7 @@ impl World {
             walls: Vec::new(),
             projectiles: Vec::new(),
             scraps: Vec::new(),
+            weapon_drops: Vec::new(),
             inventory: Inventory::new(),
             camera: Camera::default(),
             start: now,
@@ -260,8 +263,10 @@ impl World {
         );
 
         let death_loot = cleanup_dead_enemies(&mut self.enemies, &mut self.physics);
-        spawn_scraps(&mut self.scraps, death_loot);
+        spawn_scraps(&mut self.scraps, &death_loot);
+        spawn_weapon_drops(&mut self.weapon_drops, &death_loot);
         collect_scraps(&mut self.scraps, &mut self.inventory, &self.players, &self.physics);
+        collect_weapon_drops(&mut self.weapon_drops, &mut self.players, &self.physics);
         let player_body_handles: Vec<BodyHandle> =
             self.players.iter().map(|p| p.body).collect();
         cleanup_projectiles(
@@ -281,6 +286,7 @@ impl World {
         for scrap in &self.scraps {
             draw_scrap(scrap, driver, &self.camera);
         }
+        draw_weapon_drops(&self.weapon_drops, driver, &self.camera);
         draw_players(&self.players, &self.physics, driver, &self.camera);
         for player in &self.players {
             draw_spread_cone(player, &self.physics, driver, &self.camera);
@@ -392,11 +398,11 @@ fn cleanup_dead_enemies(
     loot
 }
 
-fn spawn_scraps(scraps: &mut Vec<Scrap>, death_loot: Vec<(Vec2, LootTable)>) {
+fn spawn_scraps(scraps: &mut Vec<Scrap>, death_loot: &[(Vec2, LootTable)]) {
     use rand::seq::SliceRandom;
     let mut rng = rand::thread_rng();
 
-    for (pos, table) in death_loot {
+    for &(pos, table) in death_loot {
         let count = rng.gen_range(table.min_drops..=table.max_drops);
         for _ in 0..count {
             let color = *ScrapColor::ALL.choose(&mut rng).unwrap();
@@ -404,6 +410,69 @@ fn spawn_scraps(scraps: &mut Vec<Scrap>, death_loot: Vec<(Vec2, LootTable)>) {
             let offset = Vec2::new(rng.gen_range(-0.3..=0.3), rng.gen_range(-0.3..=0.3));
             scraps.push(Scrap { position: pos + offset, color, shape });
         }
+    }
+}
+
+fn spawn_weapon_drops(weapon_drops: &mut Vec<WeaponDrop>, death_loot: &[(Vec2, LootTable)]) {
+    let mut rng = rand::thread_rng();
+    for &(pos, table) in death_loot {
+        if rng.gen::<f32>() < table.weapon_drop_chance {
+            let (name, weapon) = loot::random_weapon_drop(&mut rng);
+            let offset = Vec2::new(rng.gen_range(-0.2..=0.2), rng.gen_range(-0.2..=0.2));
+            weapon_drops.push(WeaponDrop { position: pos + offset, name, weapon });
+        }
+    }
+}
+
+fn collect_weapon_drops(
+    weapon_drops: &mut Vec<WeaponDrop>,
+    players: &mut Vec<Player>,
+    physics: &PhysicsWorld,
+) {
+    const PICKUP_RADIUS: f32 = PLAYER_RADIUS + 0.35;
+    let mut i = 0;
+    while i < weapon_drops.len() {
+        let drop_pos = weapon_drops[i].position;
+        let hit = players
+            .iter()
+            .filter(|p| p.health > 0.0)
+            .any(|p| physics.body(p.body).position.distance(drop_pos) < PICKUP_RADIUS);
+        if hit {
+            let drop = weapon_drops.swap_remove(i);
+            // Give to the first live player in range.
+            if let Some(player) = players
+                .iter_mut()
+                .filter(|p| p.health > 0.0)
+                .find(|p| physics.body(p.body).position.distance(drop_pos) < PICKUP_RADIUS)
+            {
+                player.weapon = drop.weapon;
+                player.weapon_name = Some(drop.name);
+            }
+        } else {
+            i += 1;
+        }
+    }
+}
+
+fn draw_weapon_drops(
+    weapon_drops: &[WeaponDrop],
+    driver: &mut dyn gfx::GraphicsDriver,
+    camera: &Camera,
+) {
+    use gfx::shape::circle;
+    let style = gfx::Style {
+        fill: Some(gfx::style::Fill::Solid(Color::rgba(1.0, 0.82, 0.1, 0.95))),
+        stroke: Some(gfx::style::Stroke {
+            color: Color::hex(0x000000CC),
+            width: 0.006,
+            cap: gfx::style::LineCap::Round,
+            join: gfx::style::LineJoin::Round,
+        }),
+    };
+    for drop in weapon_drops {
+        let ndc = camera.world_to_ndc(drop.position);
+        let r = camera.scale(0.22);
+        draw_shape(driver, &circle(ndc, r), &style, Mat3::IDENTITY);
     }
 }
 
