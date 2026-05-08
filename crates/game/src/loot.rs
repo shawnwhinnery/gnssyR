@@ -10,12 +10,11 @@ use crate::{
 // Stat distribution primitive
 // ---------------------------------------------------------------------------
 
-/// A continuous stat range sampled with a power-curve skew.
+/// A continuous stat range sampled with a quadratic-curve skew.
 ///
 /// `min` and `max` use natural numeric ordering (min ≤ max).
 /// `lower_is_better` flips the skew direction so rare rolls land near `min`.
-/// `skew > 1.0` concentrates results toward the common/worse end.
-/// `skew = 1.0` is a flat uniform distribution.
+/// `skew` ∈ [-1, 1]: -1 weights toward `min`, 0 is uniform, 1 weights toward `max`.
 pub struct StatRange {
     pub min: f32,
     pub max: f32,
@@ -25,9 +24,15 @@ pub struct StatRange {
 
 impl StatRange {
     pub fn roll(&self, rng: &mut impl Rng) -> f32 {
-        let t: f32 = rng.gen::<f32>().powf(self.skew);
-        let t = if self.lower_is_better { 1.0 - t } else { t };
-        self.min + (self.max - self.min) * t
+        let t: f32 = rng.gen();
+        // Quadratic blend: t + s*t*(1-t) where s ∈ [-1,1].
+        // s=-1 → t² (ease-in, weights toward 0/min)
+        // s= 0 → uniform
+        // s= 1 → 2t-t² (ease-out, weights toward 1/max)
+        let s = self.skew.clamp(-1.0, 1.0);
+        let t_curved = (t + s * t * (1.0 - t)).clamp(0.0, 1.0);
+        let t_final = if self.lower_is_better { 1.0 - t_curved } else { t_curved };
+        self.min + (self.max - self.min) * t_final
     }
 }
 
@@ -58,7 +63,7 @@ fn roll_tier(tiers: &[(u32, f32)], rng: &mut impl Rng) -> u32 {
 // lower_is_better=false: rare rolls approach max; common rolls approach min.
 // ---------------------------------------------------------------------------
 const BASE: WeaponStats = WeaponStats::defaults();
-const SKEW: f32 = 2.5;
+const SKEW: f32 = 0.0;
 const FIRE_RATE: StatRange = StatRange {
     min: BASE.fire_rate,
     max: BASE.fire_rate * 5.0,
@@ -263,34 +268,20 @@ pub struct WeaponStatRarities {
 }
 
 impl WeaponStatRarities {
-    /// Mean fraction across all rolled stats — used to colour the weapon name.
+    /// Overall weapon quality score in `[0, 1]` — used to assign a rarity tier.
+    ///
+    /// Averages only the four stats that most define weapon power.  Averaging all
+    /// 23 stats collapses to a near-constant value (CLT: σ ≈ 0.06 regardless of
+    /// skew), making every weapon land in the middle tier.  With four stats the
+    /// standard deviation is ~0.14, which spreads naturally across all five tiers.
     pub fn overall_score(&self) -> f32 {
-        let fracs = [
+        let key = [
             self.fire_rate,
-            self.projectiles_per_shot,
-            self.shot_arc,
-            self.burst_count,
-            self.burst_delay,
-            self.jitter,
-            self.kickback,
-            self.sway,
-            self.projectile_speed,
-            self.projectile_size,
-            self.projectile_lifetime,
-            self.piercing,
             self.damage_total,
-            self.recoil_force,
-            self.oscillation_frequency,
-            self.oscillation_magnitude,
-            self.physics_max_bounces,
-            self.physics_friction,
-            self.physics_min_speed,
-            self.rocket_acceleration,
-            self.kinetic_damage_scale,
-            self.seeking_turn_radius,
-            self.seeking_acquire_half_angle,
+            self.projectile_speed,
+            self.burst_count,
         ];
-        fracs.iter().sum::<f32>() / fracs.len() as f32
+        key.iter().sum::<f32>() / key.len() as f32
     }
 
     pub fn from_stats(stats: &WeaponStats) -> Self {

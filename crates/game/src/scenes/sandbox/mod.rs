@@ -282,15 +282,15 @@ impl Scene for SandboxScene {
         if self.rarity_test_requested.get() {
             self.rarity_test_requested.set(false);
             let mut rng = rand::thread_rng();
-            // counts: [common, uncommon, rare, epic, mythic]
+            // counts: [common, uncommon, rare, epic, legendary]
             let mut counts = [0u32; 5];
-            for _ in 0..1000 {
+            for _ in 0..1_000_000 {
                 let stats = loot::random_weapon_stats(&mut rng);
                 let score = loot::WeaponStatRarities::from_stats(&stats).overall_score();
                 let tier = if score >= 0.80 { 4 } else if score >= 0.60 { 3 } else if score >= 0.40 { 2 } else if score >= 0.20 { 1 } else { 0 };
                 counts[tier] += 1;
             }
-            println!("[rarity test] common={} uncommon={} rare={} epic={} mythic={}", counts[0], counts[1], counts[2], counts[3], counts[4]);
+            println!("[rarity test] common={} uncommon={} rare={} epic={} legendary={}", counts[0], counts[1], counts[2], counts[3], counts[4]);
             *self.rarity_test_results.borrow_mut() = Some(counts);
         }
 
@@ -666,13 +666,13 @@ impl SandboxScene {
             c
         };
 
-        const TOTAL: u32 = 1000;
+        const TOTAL: u32 = 1_000_000;
         const TIERS: [(&str, egui::Color32); 5] = [
             ("Common",   egui::Color32::from_rgb(130, 130, 130)),
             ("Uncommon", egui::Color32::from_rgb(60, 115, 255)),
             ("Rare",     egui::Color32::from_rgb(160, 50, 235)),
             ("Epic",     egui::Color32::from_rgb(255, 175, 0)),
-            ("Mythic",   egui::Color32::from_rgb(220, 50, 50)),
+            ("Legendary", egui::Color32::from_rgb(220, 50, 50)),
         ];
 
         let frame = egui::Frame::window(&ctx.style())
@@ -688,7 +688,7 @@ impl SandboxScene {
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.label(
-                        egui::RichText::new("Rarity Distribution (n=1000)")
+                        egui::RichText::new("Rarity Distribution (n=1,000,000)")
                             .heading()
                             .color(egui::Color32::WHITE),
                     );

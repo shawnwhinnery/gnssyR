@@ -15,7 +15,7 @@ See [crates/index.md](crates/index.md) for a one-line summary of every crate.
 | Input | `input` |
 | Physics | `physics` (2D rigid-body simulation, SAT narrowphase, impulse resolution, **collision layer** filtering on `Body`; **`PhysicsWorld::try_body`** for safe handle reads after removal) |
 | App loop | `window` |
-| Game logic | `game` | Couch co-op: `World`, `SandboxScene`, `Weapon` / `ProjectileBehavior` / `Projectile`, `physics_layers` on `physics::Body`. |
+| Game logic | `game` — `World`, scenes (`MainMenuScene` → `Level1Scene` / `SandboxScene`), `Weapon` / `ProjectileBehavior` / `Projectile`, `physics_layers`, `Actor` / `ActorCore`, `Camera`, `Scrap` / `Inventory`, `ModPart` / forge, `FriendlyNpc` / `Forgemaster`, `namegen` |
 | UI | egui 0.29 (immediate-mode, rendered by `gfx-wgpu` on top of game content) |
 
 ## Workflow
@@ -44,7 +44,18 @@ All live game state lives in a single `Box<dyn game::scenes::Scene>` owned by th
 
 `SceneTransition::Replace(Box<dyn Scene>)` swaps the active scene (dropping the old one via RAII); `SceneTransition::Quit` signals exit. `main.rs` processes the returned transition between tick and render each frame.
 
-See `crates/game/src/scenes/mod.rs` and `crates/game/CLAUDE.md` for conventions and the `PauseState` composition pattern.
+### Production scene graph
+
+```
+MainMenuScene
+  ├─→ Level1Scene        (Start Game)
+  │     └─→ MainMenuScene (Return to Menu / Game Over → Try Again → Level1Scene)
+  └─→ SandboxScene       (Start Sandbox)
+        (no outbound transition today)
+LevelSelectScene         (stub, not yet reachable from MainMenuScene)
+```
+
+See `crates/game/src/scenes/mod.rs` and `crates/game/CLAUDE.md` for scene conventions and the `PauseState` composition pattern.
 
 ## UI (egui)
 
@@ -75,5 +86,3 @@ The game uses [egui](https://github.com/emilk/egui) for all in-game UI (pause me
 - **Test scenes folder:** `crates/game/tests/integration/scenes/` — place all snapshot-test-dedicated scenes here, separate from production scenes under `crates/game/src/scenes/`
 - **Regenerate after intentional visual change:** `UPDATE_SNAPSHOTS=1 cargo test -p game`
 - **On failure:** a `gfx_scene.actual.bin` is written next to the golden file for inspection
-
-
