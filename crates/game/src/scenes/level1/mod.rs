@@ -337,7 +337,14 @@ impl Scene for Level1Scene {
     }
 
     fn draw_ui(&self, ctx: &egui::Context) {
-        self.pause.draw_ui(ctx);
+        let weapon_display = self.world.players.first().map(|p| {
+            (
+                p.weapon_name.as_deref().unwrap_or("Default Loadout"),
+                &p.weapon.stats,
+                p.weapon.projectile_behavior,
+            )
+        });
+        self.pause.draw_ui(ctx, weapon_display);
         if self.pause.is_paused() {
             return;
         }

@@ -107,7 +107,7 @@ Enemies use `Enemy::projectile_behavior()` (default `Physics`); `Dummy` uses `se
 | `projectiles_per_shot`, `shot_arc` | Multi-projectile spread pattern |
 | `jitter` | Per-projectile random angular error (half-width, radians) |
 | `kickback` | Per-volley add to runtime `Weapon::kickback` (radians); no cap — accumulator grows unbounded |
-| `stability` | Seconds τ: each tick `Weapon::kickback *= exp(-dt / τ)` while `kickback > 0` (including while firing) |
+| `sway` | Seconds τ: each tick `Weapon::kickback *= exp(-dt / τ)` while `kickback > 0` (including while firing) |
 | `projectile_speed`, `projectile_size`, `projectile_lifetime` | Shared projectile tuning |
 | `piercing` | **Non-physics only**: extra **actor** hits before despawn (player shots → enemies; enemy shots → players). Walls always remove scripted shots. Ignored for `Physics` projectiles. |
 | `damage_total`, `recoil_force` | Hit damage and owner impulse |

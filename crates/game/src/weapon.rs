@@ -9,9 +9,9 @@ use rand::Rng as _;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ProjectileBehavior {
     /// Straight line at fixed speed; cheap circle-vs-geometry tests (no rigid body).
+    #[default]
     Bullet,
     /// Full rigid-body simulation until TTL, min speed, or max wall bounces.
-    #[default]
     Physics,
     /// Accelerates along spawn direction; damage scales with speed.
     Rocket,
@@ -62,8 +62,8 @@ pub struct WeaponStats {
     pub jitter: f32,
     /// Extra spread (radians) added to runtime `Weapon::kickback` per volley (full auto / burst).
     pub kickback: f32,
-    /// Stability time constant in seconds: kickback decays as exp(-dt/stability) every tick.
-    pub stability: f32,
+    /// Sway time constant in seconds: kickback decays as exp(-dt/sway) every tick.
+    pub sway: f32,
     /// Muzzle velocity of each projectile (world units per second).
     /// For `Rocket`, this is the initial speed; acceleration adds on top.
     pub projectile_speed: f32,
@@ -106,18 +106,19 @@ pub struct WeaponStats {
     pub seeking_acquire_half_angle: f32,
 }
 
-impl Default for WeaponStats {
-    fn default() -> Self {
+impl WeaponStats {
+    /// Const version of the default, required so loot.rs can use field values
+    /// in `const StatRange` definitions.
+    pub const fn defaults() -> Self {
         Self {
-            fire_rate: 5.0,
+            fire_rate: 1.5,
             projectiles_per_shot: 1,
-            shot_arc: 0.0,
+            shot_arc: 0.15,
             burst_count: 1,
             burst_delay: 0.05,
             jitter: 0.0,
-            // ~1° per volley (defaults tuned for visible full-auto spread; no hard cap).
-            kickback: 1.0_f32.to_radians(),
-            stability: 0.25,
+            kickback: 4.0_f32.to_radians(),
+            sway: 1.5,
             projectile_speed: 15.0,
             projectile_size: 0.08,
             projectile_lifetime: 2.0,
@@ -126,7 +127,7 @@ impl Default for WeaponStats {
             recoil_force: 0.5,
             oscillation_frequency: 2.0,
             oscillation_magnitude: 0.15,
-            physics_max_bounces: 0,
+            physics_max_bounces: 2,
             physics_friction: 0.35,
             physics_min_speed: 0.4,
             rocket_acceleration: 12.0,
@@ -134,6 +135,12 @@ impl Default for WeaponStats {
             seeking_turn_radius: 2.5,
             seeking_acquire_half_angle: std::f32::consts::FRAC_PI_2,
         }
+    }
+}
+
+impl Default for WeaponStats {
+    fn default() -> Self {
+        Self::defaults()
     }
 }
 
@@ -159,7 +166,7 @@ pub enum WeaponFiringState {
 pub struct Weapon {
     pub stats: WeaponStats,
     pub state: WeaponFiringState,
-    /// Accumulated sustained-fire spread in radians (extra bloom; decays via `WeaponStats::stability`).
+    /// Accumulated sustained-fire spread in radians (extra bloom; decays via `WeaponStats::sway`).
     pub kickback: f32,
     /// How newly spawned projectiles integrate and collide.
     pub projectile_behavior: ProjectileBehavior,
@@ -262,7 +269,7 @@ impl Weapon {
         }
 
         if self.kickback > 0.0 {
-            let tau = self.stats.stability.max(1e-4);
+            let tau = self.stats.sway.max(1e-4);
             self.kickback *= (-dt / tau).exp();
             if self.kickback < 1e-6 {
                 self.kickback = 0.0;
@@ -430,7 +437,7 @@ mod tests {
         WeaponStats {
             fire_rate: 10.0,
             kickback: 0.1,
-            stability: 0.5,
+            sway: 0.5,
             ..WeaponStats::default()
         }
     }
@@ -440,7 +447,7 @@ mod tests {
         WeaponStats {
             fire_rate: 10.0,
             kickback: 0.1,
-            stability: 1000.0,
+            sway: 1000.0,
             ..WeaponStats::default()
         }
     }

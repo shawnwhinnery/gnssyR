@@ -100,6 +100,9 @@ pub struct SandboxScene {
     interaction: RefCell<InteractionState>,
     forge_requested: Cell<bool>,
     last_forged: RefCell<Option<ModPart>>,
+    // Rarity distribution test
+    rarity_test_requested: Cell<bool>,
+    rarity_test_results: RefCell<Option<[u32; 5]>>,
 }
 
 impl SandboxScene {
@@ -123,6 +126,8 @@ impl SandboxScene {
             interaction: RefCell::new(InteractionState::None),
             forge_requested: Cell::new(false),
             last_forged: RefCell::new(None),
+            rarity_test_requested: Cell::new(false),
+            rarity_test_results: RefCell::new(None),
         }
     }
 }
@@ -274,6 +279,21 @@ impl Scene for SandboxScene {
             *self.weapon_name.borrow_mut() = Some(name);
         }
 
+        if self.rarity_test_requested.get() {
+            self.rarity_test_requested.set(false);
+            let mut rng = rand::thread_rng();
+            // counts: [common, uncommon, rare, epic, mythic]
+            let mut counts = [0u32; 5];
+            for _ in 0..1000 {
+                let stats = loot::random_weapon_stats(&mut rng);
+                let score = loot::WeaponStatRarities::from_stats(&stats).overall_score();
+                let tier = if score >= 0.80 { 4 } else if score >= 0.60 { 3 } else if score >= 0.40 { 2 } else if score >= 0.20 { 1 } else { 0 };
+                counts[tier] += 1;
+            }
+            println!("[rarity test] common={} uncommon={} rare={} epic={} mythic={}", counts[0], counts[1], counts[2], counts[3], counts[4]);
+            *self.rarity_test_results.borrow_mut() = Some(counts);
+        }
+
         if let Some(player) = self.world.players.first_mut() {
             let (stats, beh) = &*self.weapon_editor.borrow();
             player.weapon.stats = stats.clone();
@@ -348,7 +368,17 @@ impl Scene for SandboxScene {
     }
 
     fn draw_ui(&self, ctx: &egui::Context) {
-        self.pause.draw_ui(ctx);
+        {
+            let editor = self.weapon_editor.borrow();
+            let (stats, behavior) = &*editor;
+            let name_ref = self.weapon_name.borrow();
+            let weapon_display = Some((
+                name_ref.as_deref().unwrap_or("Default Loadout"),
+                stats,
+                *behavior,
+            ));
+            self.pause.draw_ui(ctx, weapon_display);
+        }
 
         if self.pause.is_paused() {
             return;
@@ -378,6 +408,11 @@ impl Scene for SandboxScene {
         // ── Forge result panel ────────────────────────────────────────────────
         if self.last_forged.borrow().is_some() {
             self.draw_forge_result(ctx);
+        }
+
+        // ── Rarity test results popup ─────────────────────────────────────────
+        if self.rarity_test_results.borrow().is_some() {
+            self.draw_rarity_test_results(ctx);
         }
 
         // ── Sandbox panel (tabbed) ────────────────────────────────────────────
@@ -624,6 +659,65 @@ impl SandboxScene {
             });
     }
 
+    fn draw_rarity_test_results(&self, ctx: &egui::Context) {
+        let counts = {
+            let r = self.rarity_test_results.borrow();
+            let Some(c) = *r else { return };
+            c
+        };
+
+        const TOTAL: u32 = 1000;
+        const TIERS: [(&str, egui::Color32); 5] = [
+            ("Common",   egui::Color32::from_rgb(130, 130, 130)),
+            ("Uncommon", egui::Color32::from_rgb(60, 115, 255)),
+            ("Rare",     egui::Color32::from_rgb(160, 50, 235)),
+            ("Epic",     egui::Color32::from_rgb(255, 175, 0)),
+            ("Mythic",   egui::Color32::from_rgb(220, 50, 50)),
+        ];
+
+        let frame = egui::Frame::window(&ctx.style())
+            .fill(egui::Color32::from_rgba_premultiplied(10, 10, 10, 240))
+            .inner_margin(egui::Margin::symmetric(24.0, 16.0));
+
+        egui::Window::new("##rarity_test_results")
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .resizable(false)
+            .collapsible(false)
+            .title_bar(false)
+            .frame(frame)
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.label(
+                        egui::RichText::new("Rarity Distribution (n=1000)")
+                            .heading()
+                            .color(egui::Color32::WHITE),
+                    );
+                });
+                ui.add_space(10.0);
+
+                egui::Grid::new("rarity_results_grid")
+                    .num_columns(3)
+                    .spacing([12.0, 4.0])
+                    .show(ui, |ui| {
+                        for (i, (name, color)) in TIERS.iter().enumerate() {
+                            let n = counts[i];
+                            let pct = n as f32 / TOTAL as f32 * 100.0;
+                            ui.colored_label(*color, *name);
+                            ui.colored_label(*color, n.to_string());
+                            ui.colored_label(*color, format!("{:.1}%", pct));
+                            ui.end_row();
+                        }
+                    });
+
+                ui.add_space(10.0);
+                ui.vertical_centered(|ui| {
+                    if ui.button("Close").clicked() {
+                        *self.rarity_test_results.borrow_mut() = None;
+                    }
+                });
+            });
+    }
+
     fn draw_sandbox_panel(&self, ctx: &egui::Context) {
         egui::Window::new("Sandbox")
             .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(12.0, -12.0))
@@ -694,17 +788,26 @@ impl SandboxScene {
 
         ui.separator();
 
+        let name_color = {
+            let editor = self.weapon_editor.borrow();
+            let rarities = crate::loot::WeaponStatRarities::from_stats(&editor.0);
+            crate::pause::rarity_color(rarities.overall_score())
+        };
+
         ui.horizontal(|ui| {
             let name = self.weapon_name.borrow();
             let label_text = name.as_deref().unwrap_or("Default Loadout");
             ui.label(
                 egui::RichText::new(label_text)
                     .italics()
-                    .color(egui::Color32::from_rgb(255, 210, 80)),
+                    .color(name_color),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Roll Random").clicked() {
                     self.random_weapon_requested.set(true);
+                }
+                if ui.button("Rarity Test").clicked() {
+                    self.rarity_test_requested.set(true);
                 }
             });
         });
@@ -795,9 +898,9 @@ impl SandboxScene {
                         }
                         ui.end_row();
 
-                        ui.label("stability (τ)");
+                        ui.label("sway (τ)");
                         ui.add(
-                            egui::DragValue::new(&mut stats.stability)
+                            egui::DragValue::new(&mut stats.sway)
                                 .range(0.02..=5.0)
                                 .suffix(" s")
                                 .speed(0.02),
@@ -952,7 +1055,7 @@ impl SandboxScene {
 
         ui.separator();
         ui.label(
-            egui::RichText::new("Smaller stability τ → runtime kickback decays faster (always, including while firing).")
+            egui::RichText::new("Smaller sway τ → runtime kickback decays faster (always, including while firing).")
                 .small()
                 .color(egui::Color32::GRAY),
         );
