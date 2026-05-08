@@ -1,22 +1,49 @@
-# CLAUDE.md — gnssyR
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
 A local couch co-op 2D game (up to 4 players) with a web IO-game aesthetic. Written in Rust. The codebase is spec-driven: each crate has an `index.md` describing its intended behaviour, and tests are derived from those specs before implementation begins.
 
+## Commands
+
+```sh
+cargo run                              # run the game (requires display)
+cargo test                             # all tests (headless — no GPU required)
+cargo test -p <crate>                  # single crate, e.g. -p game, -p physics
+cargo test -p game -- <test_name>      # single test by name
+cargo check                            # fast compile check without linking
+UPDATE_SNAPSHOTS=1 cargo test -p game  # regenerate pixel snapshot golden file
+```
+
 ## Crate Map
 
-See [crates/index.md](crates/index.md) for a one-line summary of every crate.
+See [crates/index.md](crates/index.md) for one-line summaries.
 
 | Layer | Crates |
 |-------|--------|
 | Graphics abstraction | `gfx` |
 | Graphics backends | `gfx-wgpu` (GPU/production), `gfx-software` (CPU/headless) |
 | Input | `input` |
-| Physics | `physics` (2D rigid-body simulation, SAT narrowphase, impulse resolution, **collision layer** filtering on `Body`; **`PhysicsWorld::try_body`** for safe handle reads after removal) |
+| Physics | `physics` |
 | App loop | `window` |
-| Game logic | `game` — `World`, scenes (`MainMenuScene` → `Level1Scene` / `SandboxScene`), `Weapon` / `ProjectileBehavior` / `Projectile`, `physics_layers`, `Actor` / `ActorCore`, `Camera`, `Scrap` / `Inventory`, `ModPart` / forge, `FriendlyNpc` / `Forgemaster`, `namegen` |
+| Game logic | `game` |
 | UI | egui 0.29 (immediate-mode, rendered by `gfx-wgpu` on top of game content) |
+
+### Dependency Rules
+
+```
+game        → gfx, input, physics, window, gfx-software (dev), egui
+window      → gfx, input, winit, gfx-wgpu (feature-gated)
+gfx-wgpu    → gfx, wgpu, egui-wgpu
+gfx-software → gfx
+input       → gilrs (optional)
+physics     → glam only — no gfx dependency ever
+gfx         → glam only — no backend crates ever
+```
+
+`App` in `window` is generic over driver/input traits and must not import concrete backends.
 
 ## Workflow
 
@@ -27,10 +54,11 @@ See [crates/index.md](crates/index.md) for a one-line summary of every crate.
 ## Key Conventions
 
 - Tests use `SoftwareDriver` (no GPU) and `SimulatedBackend` (no hardware) so the full game loop is exercisable headlessly.
-- `App` is generic over driver/input traits — it must not import concrete backends.
 - Mesh handles are **frame-scoped**: do not cache across `begin_frame` boundaries.
 - Axis deadzone is 0.1 (clamped to 0.0 in `GilrsBackend`).
 - Keyboard/mouse always maps to P1; gamepads fill P1–P4 in connection order.
+- **`PhysicsWorld::try_body`** — use this (not `body()`) in game code after `remove_body`; returns `None` if the slot is empty. `body()` panics on a removed handle.
+- Collision layer presets live in `physics_layers.rs` — never set raw bitmask literals inline.
 
 ## Scene Management
 
@@ -42,47 +70,60 @@ All live game state lives in a single `Box<dyn game::scenes::Scene>` owned by th
 | `draw` | `(&self, driver)` | Render gfx content |
 | `draw_ui` | `(&self, ctx)` | Render egui overlay (default no-op) |
 
-`SceneTransition::Replace(Box<dyn Scene>)` swaps the active scene (dropping the old one via RAII); `SceneTransition::Quit` signals exit. `main.rs` processes the returned transition between tick and render each frame.
+`SceneTransition::Replace(Box<dyn Scene>)` swaps the active scene; `SceneTransition::Quit` signals exit.
 
 ### Production scene graph
 
 ```
 MainMenuScene
   ├─→ Level1Scene        (Start Game)
-  │     └─→ MainMenuScene (Return to Menu / Game Over → Try Again → Level1Scene)
+  │     └─→ MainMenuScene (Return to Menu / Game Over)
   └─→ SandboxScene       (Start Sandbox)
-        (no outbound transition today)
 LevelSelectScene         (stub, not yet reachable from MainMenuScene)
 ```
 
-See `crates/game/src/scenes/mod.rs` and `crates/game/CLAUDE.md` for scene conventions and the `PauseState` composition pattern.
+### `draw_ui` deferred mutation pattern
+
+`draw_ui` receives `&self`, so it cannot mutate `World` or trigger transitions directly. The pattern throughout all scenes:
+
+1. Flags are `Cell<bool>` (or `Cell<T>`) fields on the scene struct.
+2. `draw_ui` sets flags via `Cell::set`.
+3. The next `tick` reads and clears those flags, then performs the actual mutation.
+
+Never transition or mutate `World` from inside `draw_ui`. See `PauseState` in `pause.rs` as the canonical reference implementation.
+
+### `PauseState` composition
+
+Embed `PauseState` in any scene that needs a pause menu:
+
+```rust
+self.pause.tick(events);           // toggles Playing↔Paused on Escape
+if !self.pause.is_paused() {
+    self.world.tick(events);
+}
+// in draw_ui:
+self.pause.draw_ui(ctx);
+```
+
+`PauseState.mode` is `Cell<GameMode>` so `draw_ui` can write back from `&self`.
 
 ## UI (egui)
 
-The game uses [egui](https://github.com/emilk/egui) for all in-game UI (pause menus, overlays, debug panels, etc.).
-
-**Integration points:**
-- `window::EguiRenderer` trait — implemented by `WgpuDriver`; called by `App::run_with_ui` each frame to pass tessellated UI to the GPU driver
-- `App::run_with_ui` — opt-in variant of `App::run`; manages `egui_winit::State` and the egui frame lifecycle; use this in `main.rs` instead of `App::run`
-- `WgpuDriver` — owns `egui_wgpu::Renderer`; renders egui on top of game content in `end_frame` using `LoadOp::Load`
-
-**Scene convention:**
-- `Scene::draw_ui(&self, ctx: &egui::Context)` — override this in scenes that need UI; default is a no-op
-- `draw_ui` is called from the render closure in `main.rs` after `scene.draw(driver)`
-- `egui::Context` is `Arc`-based; clone it into the render closure at startup
-
-**Key constraints:**
-- `GraphicsDriver` trait has no egui coupling — `gfx` and `gfx-software` are egui-free
-- `SoftwareDriver` (used in headless tests) does not implement `EguiRenderer`; tests run via `App::run_frames`, which has no egui path
-- egui input events are consumed before game input in `WinitAppEgui::window_event`; game input is skipped when egui reports `consumed`
+- `App::run_with_ui` — manages the egui frame lifecycle; use this in `main.rs` instead of `App::run`.
+- `Scene::draw_ui(&self, ctx: &egui::Context)` — override to render egui content; default is a no-op.
+- `draw_ui` is called after `scene.draw(driver)` each frame.
+- `GraphicsDriver` has no egui coupling — `gfx` and `gfx-software` are egui-free.
+- `SoftwareDriver` (headless tests) does not implement `EguiRenderer`; tests via `App::run_frames` skip the egui path entirely.
+- egui input events are consumed before game input; game input is skipped when egui reports `consumed`.
 
 ## Scene Snapshot Tests
 
-`crates/game` contains a pixel-level regression test for the GFX showcase scene:
-
 - **Test:** `crates/game/tests/integration/main.rs` — `gfx_scene_snapshot`
-- **Golden file:** `crates/game/tests/snapshots/gfx_scene.bin` — committed to the repo; 512×512 ARGB pixels as little-endian `u32` bytes
-- **Scene:** `GfxShowcaseScene` in `crates/game/tests/integration/scenes/gfx_showcase.rs` — exercises every shape primitive, style variant, and transform helper; test-only, not a production game scene
-- **Test scenes folder:** `crates/game/tests/integration/scenes/` — place all snapshot-test-dedicated scenes here, separate from production scenes under `crates/game/src/scenes/`
+- **Golden file:** `crates/game/tests/snapshots/gfx_scene.bin` — committed; 512×512 ARGB pixels as little-endian `u32` bytes
 - **Regenerate after intentional visual change:** `UPDATE_SNAPSHOTS=1 cargo test -p game`
-- **On failure:** a `gfx_scene.actual.bin` is written next to the golden file for inspection
+- **On failure:** `gfx_scene.actual.bin` is written next to the golden file for inspection
+- Test-only scenes belong in `crates/game/tests/integration/scenes/` — never in `src/scenes/`
+
+## Active Refactor: `loot.rs`
+
+`crates/game/src/loot.rs` is under active refactor. Do not modify it without checking the current state of the file first. The game/CLAUDE.md and game/src/CLAUDE.md both note this with a warning.

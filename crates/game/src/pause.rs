@@ -76,40 +76,35 @@ impl PauseState {
             return;
         }
 
-        let frame = egui::Frame::window(&ctx.style())
-            .fill(egui::Color32::from_rgba_premultiplied(10, 10, 10, 230))
-            .inner_margin(egui::Margin::symmetric(32.0, 24.0));
-
-        egui::Window::new("##pause_overlay")
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .resizable(false)
-            .collapsible(false)
-            .title_bar(false)
-            .min_width(520.0)
-            .frame(frame)
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgba_premultiplied(10, 10, 10, 230))
+                    .inner_margin(egui::Margin::symmetric(48.0, 32.0)),
+            )
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
+                    ui.set_max_width(800.0);
+
                     ui.label(
                         egui::RichText::new("CHARACTER")
                             .heading()
                             .color(egui::Color32::WHITE),
                     );
-                });
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(10.0);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(10.0);
 
-                ui.columns(2, |cols| {
-                    draw_weapon_column(&mut cols[0], weapon);
-                    // Right column reserved for future stats.
-                    cols[1].label("");
-                });
+                    ui.columns(2, |cols| {
+                        draw_weapon_column(&mut cols[0], weapon);
+                        // Right column reserved for future stats.
+                        cols[1].label("");
+                    });
 
-                ui.add_space(12.0);
-                ui.separator();
-                ui.add_space(8.0);
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(8.0);
 
-                ui.vertical_centered(|ui| {
                     if ui
                         .add_sized([120.0, 36.0], egui::Button::new("Resume"))
                         .clicked()

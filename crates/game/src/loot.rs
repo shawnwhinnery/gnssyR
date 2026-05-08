@@ -7,36 +7,45 @@ use crate::{
 };
 
 // ---------------------------------------------------------------------------
-// Stat distribution primitive
+// Stat tier primitive
 // ---------------------------------------------------------------------------
 
-/// A continuous stat range sampled with a quadratic-curve skew.
-///
-/// `min` and `max` use natural numeric ordering (min ≤ max).
-/// `lower_is_better` flips the skew direction so rare rolls land near `min`.
-/// `skew` ∈ [-1, 1]: -1 weights toward `min`, 0 is uniform, 1 weights toward `max`.
-pub struct StatRange {
-    pub min: f32,
-    pub max: f32,
-    pub skew: f32,
-    pub lower_is_better: bool,
+/// Five discrete tiers ordered Common (index 0) → Legendary (index 4).
+/// `values[0]` is the worst/common roll; `values[4]` is the best/legendary roll.
+/// Direction (higher or lower = better) is encoded in value ordering — no flag needed.
+pub struct StatTiers {
+    pub values:  [f32; 5],
+    pub weights: [f32; 5],
 }
 
-impl StatRange {
+const DEFAULT_WEIGHTS: [f32; 5] = [0.698, 0.001, 0.1, 0.1, 0.1];
+
+impl StatTiers {
     pub fn roll(&self, rng: &mut impl Rng) -> f32 {
-        let t: f32 = rng.gen();
-        // Quadratic blend: t + s*t*(1-t) where s ∈ [-1,1].
-        // s=-1 → t² (ease-in, weights toward 0/min)
-        // s= 0 → uniform
-        // s= 1 → 2t-t² (ease-out, weights toward 1/max)
-        let s = self.skew.clamp(-1.0, 1.0);
-        let t_curved = (t + s * t * (1.0 - t)).clamp(0.0, 1.0);
-        let t_final = if self.lower_is_better { 1.0 - t_curved } else { t_curved };
-        self.min + (self.max - self.min) * t_final
+        let roll: f32 = rng.gen();
+        let mut cursor = 0.0_f32;
+        for i in 0..5 {
+            cursor += self.weights[i];
+            if roll < cursor {
+                return self.values[i];
+            }
+        }
+        self.values[4]
+    }
+
+    /// Returns rarity fraction in `[0, 1]` — 0.0 for Common, 1.0 for Legendary.
+    /// Returns 0.0 when `value` does not exactly match any tier.
+    pub fn frac(&self, value: f32) -> f32 {
+        for (i, &v) in self.values.iter().enumerate() {
+            if value == v {
+                return i as f32 / 4.0;
+            }
+        }
+        0.0
     }
 }
 
-/// Weighted tier roll for discrete stats.
+/// Weighted tier roll for discrete (u32) stats.
 ///
 /// `tiers` is a slice of `(value, weight)` pairs; weights must sum to 1.0.
 fn roll_tier(tiers: &[(u32, f32)], rng: &mut impl Rng) -> u32 {
@@ -51,135 +60,108 @@ fn roll_tier(tiers: &[(u32, f32)], rng: &mut impl Rng) -> u32 {
     tiers.last().map(|&(v, _)| v).unwrap_or(0)
 }
 
+/// Normalise a discrete tier value to `[0, 1]` by its position in the tier table.
+fn tier_frac_u32(value: u32, tiers: &[(u32, f32)]) -> f32 {
+    let idx = tiers.iter().position(|&(v, _)| v == value).unwrap_or(0);
+    let max_idx = tiers.len().saturating_sub(1).max(1);
+    idx as f32 / max_idx as f32
+}
+
 // ---------------------------------------------------------------------------
-// Per-stat drop ranges
+// Per-stat drop tiers
 //
-// Skew math reference (skew k, range [min, max]):
-//   Median t = 0.5^k  →  median output depends on lower_is_better direction
-//   Expected t = 1/(k+1)
-//
-// All ranges use natural ordering (min ≤ max).
-// lower_is_better=true: rare rolls approach min; common rolls approach max.
-// lower_is_better=false: rare rolls approach max; common rolls approach min.
+// values[0] = Common (worst roll), values[4] = Legendary (best roll).
+// Direction is encoded in value ordering: ascending = higher is better,
+// descending = lower is better.
 // ---------------------------------------------------------------------------
+
 const BASE: WeaponStats = WeaponStats::defaults();
-const SKEW: f32 = 0.0;
-const FIRE_RATE: StatRange = StatRange {
-    min: BASE.fire_rate,
-    max: BASE.fire_rate * 5.0,
-    skew: SKEW,
-    lower_is_better: false,
+
+const FIRE_RATE: StatTiers = StatTiers {
+    values:  [BASE.fire_rate, BASE.fire_rate * 2.0, BASE.fire_rate * 3.0, BASE.fire_rate * 4.0, BASE.fire_rate * 5.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const SWAY: StatRange = StatRange {
-    min: 0.0,
-    max: BASE.sway,
-    skew: SKEW,
-    lower_is_better: true,
+const SWAY: StatTiers = StatTiers {
+    values:  [BASE.sway, BASE.sway * 0.75, BASE.sway * 0.5, BASE.sway * 0.25, 0.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const SHOT_ARC: StatRange = StatRange {
-    min: BASE.shot_arc * 0.5,
-    max: BASE.shot_arc,
-    skew: SKEW,
-    lower_is_better: true,
+const SHOT_ARC: StatTiers = StatTiers {
+    values:  [BASE.shot_arc, BASE.shot_arc * 0.875, BASE.shot_arc * 0.75, BASE.shot_arc * 0.625, BASE.shot_arc * 0.5],
+    weights: DEFAULT_WEIGHTS,
 };
-const BURST_DELAY: StatRange = StatRange {
-    min: BASE.burst_delay * 0.5,
-    max: BASE.burst_delay,
-    skew: SKEW,
-    lower_is_better: true,
+const BURST_DELAY: StatTiers = StatTiers {
+    values:  [BASE.burst_delay, BASE.burst_delay * 0.875, BASE.burst_delay * 0.75, BASE.burst_delay * 0.625, BASE.burst_delay * 0.5],
+    weights: DEFAULT_WEIGHTS,
 };
-const JITTER: StatRange = StatRange {
-    min: 0.0,
-    max: BASE.jitter,
-    skew: SKEW,
-    lower_is_better: true,
+// Defined independently because BASE.jitter = 0.0 makes a BASE-relative range zero-span.
+const JITTER: StatTiers = StatTiers {
+    values:  [0.10, 0.07, 0.04, 0.01, 0.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const PROJ_SPEED: StatRange = StatRange {
-    min: BASE.projectile_speed,
-    max: BASE.projectile_speed * 1.5,
-    skew: SKEW,
-    lower_is_better: false,
+const KICKBACK: StatTiers = StatTiers {
+    values:  [BASE.kickback, BASE.kickback * 0.75, BASE.kickback * 0.5, BASE.kickback * 0.25, 0.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const PROJ_SIZE: StatRange = StatRange {
-    min: BASE.projectile_size,
-    max: BASE.projectile_size * 3.0,
-    skew: SKEW,
-    lower_is_better: false,
+const PROJ_SPEED: StatTiers = StatTiers {
+    values:  [BASE.projectile_speed, BASE.projectile_speed * 1.125, BASE.projectile_speed * 1.25, BASE.projectile_speed * 1.375, BASE.projectile_speed * 1.5],
+    weights: DEFAULT_WEIGHTS,
 };
-const PROJ_LIFETIME: StatRange = StatRange {
-    min: BASE.projectile_lifetime,
-    max: BASE.projectile_lifetime * 1.1,
-    skew: SKEW,
-    lower_is_better: false,
+const PROJ_SIZE: StatTiers = StatTiers {
+    values:  [BASE.projectile_size, BASE.projectile_size * 1.5, BASE.projectile_size * 2.0, BASE.projectile_size * 2.5, BASE.projectile_size * 3.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const DAMAGE_TOTAL: StatRange = StatRange {
-    min: BASE.damage_total,
-    max: BASE.damage_total * 3.0,
-    skew: SKEW,
-    lower_is_better: false,
+const PROJ_LIFETIME: StatTiers = StatTiers {
+    values:  [BASE.projectile_lifetime, BASE.projectile_lifetime * 1.025, BASE.projectile_lifetime * 1.05, BASE.projectile_lifetime * 1.075, BASE.projectile_lifetime * 1.1],
+    weights: DEFAULT_WEIGHTS,
 };
-const RECOIL_FORCE: StatRange = StatRange {
-    min: 0.0,
-    max: BASE.damage_total,
-    skew: SKEW,
-    lower_is_better: true,
+const DAMAGE_TOTAL: StatTiers = StatTiers {
+    values:  [BASE.damage_total, BASE.damage_total * 1.5, BASE.damage_total * 2.0, BASE.damage_total * 2.5, BASE.damage_total * 3.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const KICKBACK: StatRange = StatRange {
-    min: 0.0,
-    max: BASE.kickback,
-    skew: SKEW,
-    lower_is_better: true,
+const RECOIL_FORCE: StatTiers = StatTiers {
+    values:  [BASE.damage_total, BASE.damage_total * 0.75, BASE.damage_total * 0.5, BASE.damage_total * 0.25, 0.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const OSCILLATION_FREQUENCY: StatRange = StatRange {
-    min: BASE.oscillation_frequency,
-    max: BASE.oscillation_frequency * 0.5,
-    skew: SKEW,
-    lower_is_better: false,
+const OSCILLATION_FREQUENCY: StatTiers = StatTiers {
+    values:  [BASE.oscillation_frequency, BASE.oscillation_frequency * 0.875, BASE.oscillation_frequency * 0.75, BASE.oscillation_frequency * 0.625, BASE.oscillation_frequency * 0.5],
+    weights: DEFAULT_WEIGHTS,
 };
-const OSCILLATION_MAGNITUDE: StatRange = StatRange {
-    min: BASE.oscillation_magnitude,
-    max: BASE.oscillation_magnitude * 3.0,
-    skew: SKEW,
-    lower_is_better: false,
+const OSCILLATION_MAGNITUDE: StatTiers = StatTiers {
+    values:  [BASE.oscillation_magnitude, BASE.oscillation_magnitude * 1.5, BASE.oscillation_magnitude * 2.0, BASE.oscillation_magnitude * 2.5, BASE.oscillation_magnitude * 3.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const PHYSICS_FRICTION: StatRange = StatRange {
-    min: BASE.physics_friction,
-    max: 0.0,
-    skew: SKEW,
-    lower_is_better: true,
+const PHYSICS_FRICTION: StatTiers = StatTiers {
+    values:  [BASE.physics_friction, BASE.physics_friction * 0.75, BASE.physics_friction * 0.5, BASE.physics_friction * 0.25, 0.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const PHYSICS_MIN_SPEED: StatRange = StatRange {
-    min: 0.0,
-    max: BASE.physics_min_speed * 2.0,
-    skew: SKEW,
-    lower_is_better: true,
+const PHYSICS_MIN_SPEED: StatTiers = StatTiers {
+    values:  [BASE.physics_min_speed * 2.0, BASE.physics_min_speed * 1.5, BASE.physics_min_speed, BASE.physics_min_speed * 0.5, 0.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const ROCKET_ACCELERATION: StatRange = StatRange {
-    min: BASE.rocket_acceleration,
-    max: BASE.rocket_acceleration * 3.0,
-    skew: SKEW,
-    lower_is_better: false,
+const ROCKET_ACCELERATION: StatTiers = StatTiers {
+    values:  [BASE.rocket_acceleration, BASE.rocket_acceleration * 1.5, BASE.rocket_acceleration * 2.0, BASE.rocket_acceleration * 2.5, BASE.rocket_acceleration * 3.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const KINETIC_DAMAGE_SCALE: StatRange = StatRange {
-    min: BASE.kinetic_damage_scale,
-    max: BASE.kinetic_damage_scale * 3.0,
-    skew: SKEW,
-    lower_is_better: false,
+const KINETIC_DAMAGE_SCALE: StatTiers = StatTiers {
+    values:  [BASE.kinetic_damage_scale, BASE.kinetic_damage_scale * 1.5, BASE.kinetic_damage_scale * 2.0, BASE.kinetic_damage_scale * 2.5, BASE.kinetic_damage_scale * 3.0],
+    weights: DEFAULT_WEIGHTS,
 };
-const SEEKING_TURN_RADIUS: StatRange = StatRange {
-    min: BASE.seeking_turn_radius * 0.25,
-    max: BASE.seeking_turn_radius,
-    skew: SKEW,
-    lower_is_better: true,
+const SEEKING_TURN_RADIUS: StatTiers = StatTiers {
+    values:  [BASE.seeking_turn_radius, BASE.seeking_turn_radius * 0.8125, BASE.seeking_turn_radius * 0.625, BASE.seeking_turn_radius * 0.4375, BASE.seeking_turn_radius * 0.25],
+    weights: DEFAULT_WEIGHTS,
 };
-const SEEKING_ACQUIRE_HALF_ANGLE: StatRange = StatRange {
-    min: BASE.seeking_acquire_half_angle * 0.5,
-    max: std::f32::consts::PI,
-    skew: SKEW,
-    lower_is_better: false,
+const SEEKING_ACQUIRE_HALF_ANGLE: StatTiers = StatTiers {
+    values:  [
+        std::f32::consts::PI * 0.25,
+        std::f32::consts::PI * 0.4375,
+        std::f32::consts::PI * 0.625,
+        std::f32::consts::PI * 0.8125,
+        std::f32::consts::PI,
+    ],
+    weights: DEFAULT_WEIGHTS,
 };
 
-// Tier tables: (value, weight). Weights sum to 1.0.
+// Tier tables for discrete (u32) stats: (value, weight). Weights sum to 1.0.
 const TIERS_PROJ_PER_SHOT: &[(u32, f32)] = &[(0, 0.80), (1, 0.10), (2, 0.05), (3, 0.03), (4, 0.02)];
 
 const TIERS_BURST_COUNT: &[(u32, f32)] = &[(1, 0.80), (3, 0.10), (5, 0.05), (8, 0.03), (10, 0.02)];
@@ -187,10 +169,6 @@ const TIERS_BURST_COUNT: &[(u32, f32)] = &[(1, 0.80), (3, 0.10), (5, 0.05), (8, 
 const TIERS_PIERCING: &[(u32, f32)] = &[(0, 0.80), (1, 0.10), (2, 0.05), (3, 0.03), (4, 0.02)];
 
 const TIERS_PHYSICS_MAX_BOUNCES: &[(u32, f32)] = &[(0, 0.50), (1, 0.20), (2, 0.15), (3, 0.10), (4, 0.05)];
-
-// ---------------------------------------------------------------------------
-// Base weapon template
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Drop generation
@@ -237,9 +215,8 @@ pub fn random_weapon_drop(rng: &mut impl Rng) -> (String, Weapon) {
 
 /// Per-stat rarity fraction in `[0, 1]`.
 ///
-/// 1.0 = best possible roll, 0.0 = worst (or not rolled by the loot system).
-/// Direction is handled by each range's `lower_is_better` flag, so callers
-/// always get higher = rarer/better regardless of whether the stat itself
+/// 1.0 = best possible roll (Legendary), 0.0 = worst (Common).
+/// Higher is always rarer/better regardless of whether the stat itself
 /// favours high or low values.
 pub struct WeaponStatRarities {
     pub fire_rate: f32,
@@ -286,56 +263,31 @@ impl WeaponStatRarities {
 
     pub fn from_stats(stats: &WeaponStats) -> Self {
         Self {
-            fire_rate: range_frac(stats.fire_rate, &FIRE_RATE),
-            projectiles_per_shot: tier_frac(stats.projectiles_per_shot, TIERS_PROJ_PER_SHOT),
-            shot_arc: range_frac(stats.shot_arc, &SHOT_ARC),
-            burst_count: tier_frac(stats.burst_count, TIERS_BURST_COUNT),
-            burst_delay: range_frac(stats.burst_delay, &BURST_DELAY),
-            jitter: range_frac(stats.jitter, &JITTER),
-            kickback: range_frac(stats.kickback, &KICKBACK),
-            sway: range_frac(stats.sway, &SWAY),
-            projectile_speed: range_frac(stats.projectile_speed, &PROJ_SPEED),
-            projectile_size: range_frac(stats.projectile_size, &PROJ_SIZE),
-            projectile_lifetime: range_frac(stats.projectile_lifetime, &PROJ_LIFETIME),
-            piercing: tier_frac(stats.piercing, TIERS_PIERCING),
-            damage_total: range_frac(stats.damage_total, &DAMAGE_TOTAL),
-            recoil_force: range_frac(stats.recoil_force, &RECOIL_FORCE),
-            oscillation_frequency: range_frac(stats.oscillation_frequency, &OSCILLATION_FREQUENCY),
-            oscillation_magnitude: range_frac(stats.oscillation_magnitude, &OSCILLATION_MAGNITUDE),
-            physics_max_bounces: tier_frac(stats.physics_max_bounces, TIERS_PHYSICS_MAX_BOUNCES),
-            physics_friction: range_frac(stats.physics_friction, &PHYSICS_FRICTION),
-            physics_min_speed: range_frac(stats.physics_min_speed, &PHYSICS_MIN_SPEED),
-            rocket_acceleration: range_frac(stats.rocket_acceleration, &ROCKET_ACCELERATION),
-            kinetic_damage_scale: range_frac(stats.kinetic_damage_scale, &KINETIC_DAMAGE_SCALE),
-            seeking_turn_radius: range_frac(stats.seeking_turn_radius, &SEEKING_TURN_RADIUS),
-            seeking_acquire_half_angle: range_frac(stats.seeking_acquire_half_angle, &SEEKING_ACQUIRE_HALF_ANGLE),
+            fire_rate: FIRE_RATE.frac(stats.fire_rate),
+            projectiles_per_shot: tier_frac_u32(stats.projectiles_per_shot, TIERS_PROJ_PER_SHOT),
+            shot_arc: SHOT_ARC.frac(stats.shot_arc),
+            burst_count: tier_frac_u32(stats.burst_count, TIERS_BURST_COUNT),
+            burst_delay: BURST_DELAY.frac(stats.burst_delay),
+            jitter: JITTER.frac(stats.jitter),
+            kickback: KICKBACK.frac(stats.kickback),
+            sway: SWAY.frac(stats.sway),
+            projectile_speed: PROJ_SPEED.frac(stats.projectile_speed),
+            projectile_size: PROJ_SIZE.frac(stats.projectile_size),
+            projectile_lifetime: PROJ_LIFETIME.frac(stats.projectile_lifetime),
+            piercing: tier_frac_u32(stats.piercing, TIERS_PIERCING),
+            damage_total: DAMAGE_TOTAL.frac(stats.damage_total),
+            recoil_force: RECOIL_FORCE.frac(stats.recoil_force),
+            oscillation_frequency: OSCILLATION_FREQUENCY.frac(stats.oscillation_frequency),
+            oscillation_magnitude: OSCILLATION_MAGNITUDE.frac(stats.oscillation_magnitude),
+            physics_max_bounces: tier_frac_u32(stats.physics_max_bounces, TIERS_PHYSICS_MAX_BOUNCES),
+            physics_friction: PHYSICS_FRICTION.frac(stats.physics_friction),
+            physics_min_speed: PHYSICS_MIN_SPEED.frac(stats.physics_min_speed),
+            rocket_acceleration: ROCKET_ACCELERATION.frac(stats.rocket_acceleration),
+            kinetic_damage_scale: KINETIC_DAMAGE_SCALE.frac(stats.kinetic_damage_scale),
+            seeking_turn_radius: SEEKING_TURN_RADIUS.frac(stats.seeking_turn_radius),
+            seeking_acquire_half_angle: SEEKING_ACQUIRE_HALF_ANGLE.frac(stats.seeking_acquire_half_angle),
         }
     }
-}
-
-/// Recover the rarity fraction `[0, 1]` from an absolute stat value.
-///
-/// Returns `0.0` when the span is zero or `value` falls outside the range.
-/// Result is 1.0 for the best possible value, 0.0 for the worst.
-fn range_frac(value: f32, range: &StatRange) -> f32 {
-    let span = range.max - range.min;
-    if span.abs() < f32::EPSILON {
-        return 0.0;
-    }
-    let t = (value - range.min) / span;
-    if !(0.0..=1.0).contains(&t) {
-        return 0.0;
-    }
-    if range.lower_is_better { 1.0 - t } else { t }
-}
-
-/// Normalise a discrete tier extra (0..=max_tier) to `[0, 1]`.
-fn tier_frac(extra: u32, tiers: &[(u32, f32)]) -> f32 {
-    let max_val = tiers.iter().map(|&(v, _)| v).max().unwrap_or(0);
-    if max_val == 0 {
-        return 0.0;
-    }
-    (extra as f32 / max_val as f32).clamp(0.0, 1.0)
 }
 
 // ---------------------------------------------------------------------------
