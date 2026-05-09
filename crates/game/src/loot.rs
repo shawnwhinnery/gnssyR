@@ -22,15 +22,13 @@ const DEFAULT_WEIGHTS: [f32; 5] = [0.698, 0.001, 0.1, 0.1, 0.1];
 
 impl StatTiers {
     pub fn roll(&self, rng: &mut impl Rng) -> f32 {
-        let roll: f32 = rng.gen();
-        let mut cursor = 0.0_f32;
-        for i in 0..5 {
-            cursor += self.weights[i];
-            if roll < cursor {
-                return self.values[i];
-            }
+        let ceiling: usize = self.values.len() - 1;
+        let dice = 20;
+        let mut roll: usize = rand::thread_rng().gen_range(0..dice);
+        if(roll > ceiling) {
+            roll = ceiling;
         }
-        self.values[4]
+        self.values[roll]
     }
 
     /// Returns rarity fraction in `[0, 1]` — 0.0 for Common, 1.0 for Legendary.
