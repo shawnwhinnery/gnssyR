@@ -23,7 +23,7 @@ const DEFAULT_WEIGHTS: [f32; 5] = [0.698, 0.001, 0.1, 0.1, 0.1];
 impl StatTiers {
     pub fn roll(&self, rng: &mut impl Rng) -> f32 {
         let ceiling: usize = self.values.len() - 1;
-        let dice = 20;
+        let dice: usize = ceiling;
         let mut roll: usize = rand::thread_rng().gen_range(0..dice);
         if(roll > ceiling) {
             roll = ceiling;
